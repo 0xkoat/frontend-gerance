@@ -61,8 +61,8 @@ const ROLE_OPTIONS = [
   UserRole.VIEWER,
 ] as const;
 
-// Every action here has a real backend endpoint that already rejects self-targeting (see
-// backend/CLAUDE.md — self-delete, self-role-change, and Admin-reset-on-self are all
+// Every action here has a real backend endpoint that already rejects self-targeting 
+//  self-delete, self-role-change, and Admin-reset-on-self are all
 // explicit ForbiddenExceptions, to stop a stolen bearer token from becoming permanent
 // account takeover). Hiding these actions on the caller's own row is UX on top of that
 // enforcement, not a substitute for it — the Route Handlers still relay whatever the

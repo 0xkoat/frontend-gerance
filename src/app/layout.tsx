@@ -23,10 +23,6 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // Hard-coded dark theme, not a next-themes toggle: the UI spec (Figures 1-4) is a
-  // dedicated dark SOC console with no light-mode mockup or toggle control anywhere in it.
-  // next-themes is still installed (shadcn init pulled it in) if a real toggle is wanted
-  // later — swap this for a ThemeProvider + suppressHydrationWarning at that point.
   return (
     <html
       lang="en"

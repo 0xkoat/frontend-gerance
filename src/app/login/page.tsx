@@ -1,10 +1,6 @@
 import Link from "next/link";
 import { LoginForm } from "@/components/auth/login-form";
 
-// Lives outside the (auth) route group deliberately: (auth)/layout.tsx wraps everything
-// under it (forgot-password, change-password) in a single centered card, but this page
-// needs the Figure 1 split-panel layout instead. Route groups don't affect the URL, so this
-// is still served at /login — moving it out only detaches it from that shared layout.
 const STATS = [
   { value: "6", label: "Modules" },
   { value: "100%", label: "Tenant isolation" },

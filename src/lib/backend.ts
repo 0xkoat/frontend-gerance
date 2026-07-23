@@ -4,16 +4,14 @@ import { getToken } from "@/lib/session";
 // Server-only: never fetch the backend directly from a Client Component. Route Handlers
 // under src/app/api/** are the only thing allowed to call this — they act as a thin proxy
 // that attaches the httpOnly-cookie-held token as an Authorization header, so the raw JWT
-// never has to touch client-side JS. See CLAUDE.md "Frontend auth architecture" for why.
+// never has to touch client-side JS.
 const BACKEND_URL = process.env.BACKEND_URL;
 
 if (!BACKEND_URL) {
   throw new Error("BACKEND_URL environment variable is not defined");
 }
 
-// Nest's default exception filter shape. `message` is a single string for most
-// exceptions, but class-validator's ValidationPipe (whitelist + forbidNonWhitelisted,
-// see backend/src/main.ts) returns an array of per-field messages instead.
+
 export interface BackendErrorBody {
   statusCode: number;
   message: string | string[];

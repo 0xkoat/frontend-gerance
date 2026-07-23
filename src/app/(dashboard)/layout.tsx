@@ -8,8 +8,6 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Redundant with src/proxy.ts's optimistic check by design — this is the real boundary.
-  // See src/lib/session.ts's requireSession() doc comment for why both exist.
   const session = await requireSession();
 
   let displayName = "Platform Owner";

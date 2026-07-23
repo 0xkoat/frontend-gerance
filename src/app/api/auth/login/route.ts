@@ -20,8 +20,7 @@ import { loginSchema } from "@/lib/validations/auth";
 // the declared Content-Type, so the handler would still process attacker-supplied
 // credentials and plant the resulting session cookie in the victim's browser (login CSRF).
 // Requiring a real `application/json` Content-Type forces the browser to send a CORS
-// preflight first, which this route never answers with an Access-Control-Allow-Origin
-// header — closing the bypass.
+// preflight first, which this route never answers with an Access-Control-Allow-Origin header — closing the bypass.
 export async function POST(request: Request) {
   const contentType = request.headers.get("content-type");
   if (!contentType?.toLowerCase().startsWith("application/json")) {

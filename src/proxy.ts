@@ -3,9 +3,7 @@ import type { NextRequest } from "next/server";
 import { decodeJwtPayload } from "@/lib/jwt";
 import { SESSION_COOKIE } from "@/lib/session";
 
-// Next.js 16 renamed `middleware.ts` to `proxy.ts` (the old file convention is deprecated —
-// see node_modules/next/dist/docs/01-app/03-api-reference/03-file-conventions/proxy.md).
-//
+
 // This is a UX convenience, NOT the security boundary — it only reads the cookie and
 // decodes it without verifying the signature (Proxy has no access to JWT_SECRET, and
 // shouldn't). Every real authorization decision is enforced server-side by the NestJS
@@ -40,8 +38,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Skip static assets, generated icons, and the API routes (those enforce their own auth
-  // per-route, same as Next's docs recommend for Route Handlers). `icon` covers the
+  // Skip static assets, generated icons, and the API routes . `icon` covers the
   // src/app/icon.tsx-generated favicon route — missing it here meant an unauthenticated
   // visitor's favicon request got redirected to /login instead of returning the icon,
   // breaking the tab icon on every public page including /login itself.
