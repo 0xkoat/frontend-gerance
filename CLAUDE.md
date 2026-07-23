@@ -94,7 +94,8 @@ src/
   types/auth.ts  — UserRole, SessionClaims — hand-matched to backend/src/generated/prisma
   proxy.ts       — optimistic route protection (see below)
 __tests__/       — Jest + RTL, root-level (not under src/) so it's never mistaken for a route
-test-utils.ts    — shared mockJsonResponse() helper, also root-level: anything placed inside
+test-utils.ts    — shared mockJsonResponse()/fakeToken() helpers, also root-level: anything
+                   placed inside
                    __tests__/ is picked up by Jest's default testMatch as its own suite, even
                    without a .test. suffix, which is why this isn't in __tests__/ itself
 jest.config.ts, jest.setup.ts, __mocks__/empty.js  — see "Testing" in the functionality
@@ -226,6 +227,30 @@ section is the working checklist — organized by area, not just priority order,
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
 
+**Recently completed** (2026-07-23, fifth pass — a codebase-reading session that turned into
+a fix-then-build pass): three gaps found while reading the code with fresh eyes — `POST
+/api/auth/forgot-password` got the same CSRF Content-Type guard as `login` (same no-preflight
+exposure, lower blast radius since it only flags `passwordResetRequestedAt`, not a planted
+session); `UserRowActions`' four dialogs and every Route Handler under `/api/users/**` and
+`/api/tenants/**` went from zero tests to full coverage, using a `next/headers` `cookies()`
+mock (`jest.mock("next/headers", ...)` + a fake unsigned JWT via `fakeToken()` in
+`test-utils.ts`) — the mocking strategy the "Testing" backlog below said was needed; and
+`GET /users` gained real pagination (`page`/`pageSize` query params, `{ users, total, page,
+pageSize }` response shape, `(dashboard)/users` got Previous/Next controls) since it had none
+before. Then three linked features: Admins now see a "Password reset requested" badge + amber
+row tint on any tenant user (including a co-Admin) with a pending `passwordResetRequestedAt`
+in `(dashboard)/users`; Super Admins get a real tenant detail page
+(`(dashboard)/tenants/[id]`, closing the "tenant detail view" gap below) listing that
+tenant's Admins with the same badge/tint; and a new backend capability,
+`UsersService.resetSoleAdminPassword`, lets a Super Admin reset an Admin's password but only
+when that Admin has no co-Admin in their tenant to do it instead (`POST
+/users/:id/reset-password` now accepts `SUPER_ADMIN` too, added to
+`backend/CLAUDE.md`'s hard-rules list) — when there's a co-Admin, the existing in-tenant
+reset (already visible via the same badge) is expected to handle it. Test suite grew from
+8 files/32 tests to 17 files/94 tests on the frontend; the backend gained matching coverage
+for `findAllForTenant`'s pagination, `TenantsService.findById`'s admin list, and
+`resetSoleAdminPassword`'s sole-Admin/co-Admin/not-an-Admin branches.
+
 **Recently completed** (2026-07-16, fourth pass — a project-hygiene audit, "what's not
 configured yet" beyond feature work): security response headers (CSP, `X-Frame-Options:
 DENY`, `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`,
@@ -279,10 +304,11 @@ report §3.8), and Super Admin tenant provisioning (`(dashboard)/tenants`, real
 
 ## Auth & session
 
-- [ ] Decide whether the CSRF Content-Type guard added to `POST /api/auth/login`
-      (`src/app/api/auth/login/route.ts`) should be extended to the other mutating Route
-      Handlers for defense-in-depth consistency, even though they're already protected by
-      requiring the session cookie to pre-exist.
+`POST /api/auth/login` and `POST /api/auth/forgot-password` — the two routes with no
+pre-existing-cookie precondition — both have the CSRF Content-Type guard now. Every other
+mutating route is still covered by the "cookie must already exist" + `SameSite=Lax`
+reasoning in the architecture section above; revisit only if a route is ever added that,
+like these two, doesn't require a pre-existing session.
 
 ## User management (Admin)
 
@@ -293,7 +319,12 @@ security modules (row-level alert actions, once a module exists) or deeper test 
 
 ## Tenant management (Super Admin)
 
-- [ ] Tenant detail view (currently list + create + delete; `GET /tenants/:id` is unused).
+`(dashboard)/tenants/[id]` is now a real detail page — `GET /tenants/:id` returns the
+tenant's Admins too (`TenantsService.findById`'s `include: { users: { where: { role:
+ADMIN } } }`), rendered via `TenantAdminsTable` with the same pending-reset badge/tint as
+`(dashboard)/users`, plus a reset-password action that only appears when the tenant has
+exactly one Admin (see `ResetAdminPasswordButton` and `UsersService.resetSoleAdminPassword`
+on the backend). Nothing outstanding here for now.
 
 ## Security modules (SIEM, SOAR, CTI, EDR, DFIR, VM)
 
@@ -311,19 +342,16 @@ security modules (row-level alert actions, once a module exists) or deeper test 
 
 ## Testing
 
-8 files / 32 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
-matrix, the login route's CSRF Content-Type guard, and every auth/user/tenant form's
-validation/success/error paths (`LoginForm`, `ChangePasswordForm`, `ForgotPasswordForm`,
-`CreateUserForm`, `CreateTenantForm`, `DeleteTenantButton`). Still missing, roughly in order
-of value:
+17 files / 94 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+matrix, every auth/user/tenant form's validation/success/error paths, `UserRowActions`'
+four dialogs, `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic,
+`ResetAdminPasswordButton`, and — the gap called out below in earlier passes — every Route
+Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
+cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
+unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
+token is safe to use in tests — this file never verifies signatures either). Still missing,
+roughly in order of value:
 
-- [ ] `UserRowActions` — the four dialogs (edit/role/reset/delete) have no tests yet, unlike
-      every other form in the app. Same pattern as the existing tests, just more surface
-      area (four dialogs in one component) to cover.
-- [ ] Route Handler tests beyond login's Content-Type guard — currently untested because
-      `next/headers`' `cookies()` is request-scoped and throws outside a real request
-      context; would need either a mocking strategy for `cookies()` or e2e tests (Playwright)
-      against a real running instance instead of unit-testing the handlers directly.
 - [ ] No e2e/Playwright setup — everything above is unit/component-level (Jest + RTL) only.
       The live curl-based smoke tests done this session (internship report §3.8) aren't
       automated/regression-proof; a Playwright suite against a real backend would be the

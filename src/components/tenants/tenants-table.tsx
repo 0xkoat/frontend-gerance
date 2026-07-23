@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   Table,
   TableBody,
@@ -34,7 +35,14 @@ export function TenantsTable({ tenants }: { tenants: TenantSummary[] }) {
       <TableBody>
         {tenants.map((tenant) => (
           <TableRow key={tenant.id}>
-            <TableCell className="font-medium">{tenant.name}</TableCell>
+            <TableCell className="font-medium">
+              <Link
+                href={`/tenants/${tenant.id}`}
+                className="hover:underline"
+              >
+                {tenant.name}
+              </Link>
+            </TableCell>
             <TableCell className="text-sm tabular-nums text-muted-foreground">
               {new Date(tenant.createdAt).toLocaleDateString()}
             </TableCell>

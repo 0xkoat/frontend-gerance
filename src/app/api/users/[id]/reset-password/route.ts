@@ -4,18 +4,22 @@ import {
   firstErrorMessage,
   type BackendErrorBody,
 } from "@/lib/backend";
-import { requireAdmin } from "@/lib/api-guards";
+import { requireAdminOrSuperAdmin } from "@/lib/api-guards";
 import { resetPasswordSchema } from "@/lib/validations/users";
 
 // Backend rejects id === caller's own userId — resetting your own password this way would
 // let a stolen bearer token turn into permanent account takeover with no proof of the old
 // password (see backend/CLAUDE.md). Self password changes go through
 // PATCH /api/users/me/password instead, which requires the current password.
+//
+// Also reachable by a Super Admin now (backend/src/users/users.controller.ts), for the case
+// where a tenant's sole Admin needs a reset and has no co-Admin to do it for them — the
+// backend enforces the "sole Admin" restriction, this route just relays whatever it decides.
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { error } = await requireAdmin();
+  const { error } = await requireAdminOrSuperAdmin();
   if (error) return error;
 
   const body = await request.json().catch(() => null);

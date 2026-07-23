@@ -7,7 +7,7 @@ import { UserRole } from "@/types/auth";
 // only — NOT the security boundary. The backend's own @Roles()/@Roles(UserRole.SUPER_ADMIN)
 // guards reject the wrong role regardless of what these checks do; never remove a backend
 // guard on the assumption one of these covers it.
-export async function requireRole(role: UserRole) {
+export async function requireRole(...roles: UserRole[]) {
   const session = await getSession();
   if (!session) {
     return {
@@ -18,10 +18,10 @@ export async function requireRole(role: UserRole) {
       session: null,
     };
   }
-  if (session.role !== role) {
+  if (!roles.includes(session.role)) {
     return {
       error: NextResponse.json(
-        { message: `${role} access required` },
+        { message: `${roles.join(" or ")} access required` },
         { status: 403 },
       ),
       session: null,
@@ -32,3 +32,9 @@ export async function requireRole(role: UserRole) {
 
 export const requireAdmin = () => requireRole(UserRole.ADMIN);
 export const requireSuperAdmin = () => requireRole(UserRole.SUPER_ADMIN);
+// The backend's POST /users/:id/reset-password now accepts both roles too (see
+// backend/src/users/users.controller.ts) — a Super Admin resetting an Admin's password is
+// only valid when that Admin has no co-Admin in their tenant to do it instead
+// (UsersService.resetSoleAdminPassword enforces that; this guard is just the fast-fail).
+export const requireAdminOrSuperAdmin = () =>
+  requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN);

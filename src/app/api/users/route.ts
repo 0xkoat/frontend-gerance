@@ -7,12 +7,22 @@ import {
 import { requireAdmin } from "@/lib/api-guards";
 import { createUserSchema } from "@/lib/validations/users";
 
-export async function GET() {
+export async function GET(request: Request) {
   const { error } = await requireAdmin();
   if (error) return error;
 
-  const backendRes = await backendFetchAuthed("/users");
-  const body = await backendRes.json().catch(() => []);
+  const { searchParams } = new URL(request.url);
+  const page = searchParams.get("page");
+  const pageSize = searchParams.get("pageSize");
+  const query = new URLSearchParams();
+  if (page) query.set("page", page);
+  if (pageSize) query.set("pageSize", pageSize);
+  const qs = query.toString();
+
+  const backendRes = await backendFetchAuthed(`/users${qs ? `?${qs}` : ""}`);
+  const body = await backendRes
+    .json()
+    .catch(() => ({ users: [], total: 0, page: 1, pageSize: 20 }));
   return NextResponse.json(body, { status: backendRes.status });
 }
 
