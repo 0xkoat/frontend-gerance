@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type SubmitEvent } from "react";
+import { useEffect, useState, type SubmitEvent } from "react";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
@@ -267,6 +267,16 @@ function ChangeRoleDialog({
   const [role, setRole] = useState<string>(user.role);
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // The dialog stays mounted between opens (only `open` toggles), so without this the Select
+  // would keep whatever was last picked — including a choice the admin cancelled out of —
+  // instead of reflecting the user's actual current role on reopen.
+  useEffect(() => {
+    if (open) {
+      setRole(user.role);
+      setFormError(null);
+    }
+  }, [open, user.role]);
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();

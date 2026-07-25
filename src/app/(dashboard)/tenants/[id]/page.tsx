@@ -31,6 +31,9 @@ export default async function TenantDetailPage({
   if (res.status === 404) {
     notFound();
   }
+  if (!res.ok) {
+    throw new Error(`Failed to load tenant ${id}: ${res.status}`);
+  }
   const tenant: TenantDetail = await res.json();
 
   return (

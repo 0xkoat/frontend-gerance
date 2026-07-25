@@ -37,12 +37,18 @@ export function ForgotPasswordForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed.data),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({ message: null }));
+      if (!res.ok) {
+        setFieldError(data.message ?? "Could not send the request. Try again.");
+        return;
+      }
       // Same generic message whether or not the account exists — see the route handler.
       setMessage(
         data.message ??
           "If an account exists with this email, your administrator has been notified.",
       );
+    } catch {
+      setFieldError("Could not reach the server. Try again.");
     } finally {
       setPending(false);
     }

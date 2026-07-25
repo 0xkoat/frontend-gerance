@@ -39,12 +39,17 @@ export function SidebarNav({ role, displayName, subtitle }: SidebarNavProps) {
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
       <div className="flex items-center gap-2 px-4 py-4">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#f97316] text-sm font-bold text-white">
+        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#6c63ff] text-sm font-bold text-white">
           S
         </span>
         <span className="text-sm font-semibold tracking-wide">
           SEC<span className="text-muted-foreground">OPS</span>
         </span>
+        <span
+          aria-hidden
+          className="signal-dot ml-auto size-1.5 rounded-full bg-[#0ca30c]"
+        />
+        <span className="sr-only">All systems monitoring</span>
       </div>
 
       <nav className="flex flex-1 flex-col gap-6 overflow-y-auto px-3 py-2">
