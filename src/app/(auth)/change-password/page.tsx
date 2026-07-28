@@ -1,8 +1,11 @@
 import { requireSession } from "@/lib/session";
 import { ChangePasswordForm } from "@/components/auth/change-password-form";
+import { RequestPasswordChangeForm } from "@/components/auth/request-password-change-form";
 
 export default async function ChangePasswordPage() {
-  const session = await requireSession();
+  // Must stay reachable even while mustChangePassword is true — that's exactly what this
+  // page exists to clear.
+  const session = await requireSession({ allowMustChangePassword: true });
   const forced = session.mustChangePassword;
 
   return (
@@ -14,11 +17,11 @@ export default async function ChangePasswordPage() {
         <p className="text-sm text-muted-foreground">
           {forced
             ? "Your account was created with a temporary password. Set your own before continuing."
-            : "Update the password for your account."}
+            : "There's no self-service change anymore — your administrator sets a new password for you. This just notifies them."}
         </p>
       </div>
 
-      <ChangePasswordForm forced={forced} />
+      {forced ? <ChangePasswordForm /> : <RequestPasswordChangeForm />}
     </div>
   );
 }

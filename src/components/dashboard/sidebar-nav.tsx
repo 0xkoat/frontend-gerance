@@ -20,9 +20,15 @@ interface SidebarNavProps {
   role: UserRole;
   displayName: string;
   subtitle: string;
+  hasPendingPasswordRequest?: boolean;
 }
 
-export function SidebarNav({ role, displayName, subtitle }: SidebarNavProps) {
+export function SidebarNav({
+  role,
+  displayName,
+  subtitle,
+  hasPendingPasswordRequest = false,
+}: SidebarNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
@@ -62,13 +68,21 @@ export function SidebarNav({ role, displayName, subtitle }: SidebarNavProps) {
             Dashboard
           </NavLink>
           {role === UserRole.ADMIN && (
-            <NavLink href="/users" active={pathname === "/users"}>
+            <NavLink
+              href="/users"
+              active={pathname === "/users"}
+              showDot={hasPendingPasswordRequest}
+            >
               <Users className="size-4" />
               Users
             </NavLink>
           )}
           {role === UserRole.SUPER_ADMIN && (
-            <NavLink href="/tenants" active={pathname === "/tenants"}>
+            <NavLink
+              href="/tenants"
+              active={pathname === "/tenants"}
+              showDot={hasPendingPasswordRequest}
+            >
               <Building2 className="size-4" />
               Tenants
             </NavLink>
@@ -125,23 +139,34 @@ export function SidebarNav({ role, displayName, subtitle }: SidebarNavProps) {
 function NavLink({
   href,
   active,
+  showDot = false,
   children,
 }: {
   href: string;
   active: boolean;
+  showDot?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
+        "relative flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors",
         active
           ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
           : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground",
       )}
     >
       {children}
+      {showDot && (
+        <>
+          <span
+            aria-hidden
+            className="ml-auto size-1.5 rounded-full bg-red-500"
+          />
+          <span className="sr-only">Pending password change request</span>
+        </>
+      )}
     </Link>
   );
 }

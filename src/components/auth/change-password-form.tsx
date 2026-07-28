@@ -13,7 +13,10 @@ import {
 import { changePasswordSchema } from "@/lib/validations/auth";
 import { fieldErrorsFromZod } from "@/lib/zod-errors";
 
-export function ChangePasswordForm({ forced }: { forced: boolean }) {
+// Only ever rendered for the mandatory first-time change now — voluntary rotation goes
+// through RequestPasswordChangeForm instead (backend rejects this route once
+// mustChangePassword is false).
+export function ChangePasswordForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -63,9 +66,7 @@ export function ChangePasswordForm({ forced }: { forced: boolean }) {
     <form onSubmit={handleSubmit} noValidate>
       <FieldGroup>
         <Field data-invalid={!!fieldErrors.currentPassword}>
-          <FieldLabel htmlFor="currentPassword">
-            {forced ? "Temporary password" : "Current password"}
-          </FieldLabel>
+          <FieldLabel htmlFor="currentPassword">Temporary password</FieldLabel>
           <Input
             id="currentPassword"
             name="currentPassword"

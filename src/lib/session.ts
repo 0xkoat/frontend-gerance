@@ -21,10 +21,21 @@ export async function getSession(): Promise<SessionClaims | null> {
 // The real access-control boundary for protected pages,call this
 // from every protected page, not just the shared dashboard layout, since layouts don't
 // re-run on client-side navigation between sibling routes.
-export async function requireSession(): Promise<SessionClaims> {
+//
+// This also enforces the mustChangePassword gate, mirroring proxy.ts's optimistic redirect
+// — proxy.ts alone is "easy to bypass in theory and shouldn't be trusted alone" per its own
+// comment, so this closes the gap where requireSession() was the one boundary that didn't
+// check the flag. Only /change-password itself passes allowMustChangePassword: true, since
+// it has to stay reachable for the user to actually clear the flag.
+export async function requireSession(
+  { allowMustChangePassword = false }: { allowMustChangePassword?: boolean } = {},
+): Promise<SessionClaims> {
   const session = await getSession();
   if (!session) {
     redirect("/login");
+  }
+  if (session.mustChangePassword && !allowMustChangePassword) {
+    redirect("/change-password");
   }
   return session;
 }

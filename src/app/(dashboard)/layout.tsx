@@ -28,12 +28,25 @@ export default async function DashboardLayout({
     }
   }
 
+  // Only Admin/Super Admin can have a pending password-change request waiting on them (see
+  // backend/CLAUDE.md's "single designated recipient" notification model) — nothing to
+  // check for Analyst/Viewer, who never see the Users/Tenants nav item anyway.
+  let hasPendingPasswordRequest = false;
+  if (session.role === UserRole.ADMIN || session.role === UserRole.SUPER_ADMIN) {
+    const res = await backendFetchAuthed("/users/me/pending-password-requests");
+    if (res.ok) {
+      const data = (await res.json()) as { hasPending: boolean };
+      hasPendingPasswordRequest = data.hasPending;
+    }
+  }
+
   return (
     <div className="flex min-h-screen">
       <SidebarNav
         role={session.role}
         displayName={displayName}
         subtitle={subtitle}
+        hasPendingPasswordRequest={hasPendingPasswordRequest}
       />
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-7xl px-6 py-6">{children}</div>

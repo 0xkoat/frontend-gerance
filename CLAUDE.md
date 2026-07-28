@@ -146,7 +146,12 @@ instead of having client-side JS hold the token directly:
    - `requireSession()` in `src/lib/session.ts` is the _real_ per-page boundary, called in
      every protected `page.tsx` (not just the shared layout — Next's auth guide explicitly
      warns that layouts don't re-run on sibling navigation, so a layout-only check can be
-     stale). Admin-only pages additionally check `session.role` and redirect.
+     stale). Admin-only pages additionally check `session.role` and redirect. It also
+     redirects to `/change-password` when `session.mustChangePassword` is true (an
+     `{ allowMustChangePassword: true }` param lets `/change-password` itself opt out, since
+     it has to stay reachable) — this was a real gap until 2026-07-28: `proxy.ts` checked the
+     flag but `requireSession()` didn't, so the two layers weren't actually redundant for this
+     one check. See `docs/superpowers/specs/2026-07-28-password-change-request-flow-design.md`.
    - Underneath both of those, the **backend's own guards are the actual authorization
      boundary** (`JwtAuthGuard`, `RolesGuard`, `MustChangePasswordGuard` — see
      `backend/CLAUDE.md`). Nothing on the frontend is a substitute for those; they're UX
@@ -188,6 +193,15 @@ swapping the cookie strategy.
   whether the email exists (anti-enumeration). The frontend copy on
   `(auth)/forgot-password` reflects that — don't "fix" it to sound like a real email flow
   without changing the backend first.
+- **There is no voluntary self-service password change once logged in, by design (2026-07-28).**
+  `(auth)/change-password` only shows the real change form (`ChangePasswordForm`) while
+  `session.mustChangePassword` is true — the mandatory first-time change. Otherwise it shows
+  `RequestPasswordChangeForm`, which doesn't touch the password at all; it just flags the
+  account (`POST /api/users/me/request-password-change`) for the tenant's first-created
+  Admin to notice (or Super Admins, if that first Admin is the one requesting). Don't add a
+  "change your password" settings form back without re-reading
+  `docs/superpowers/specs/2026-07-28-password-change-request-flow-design.md` first — this
+  was a deliberate security decision, not an oversight.
 - **Super Admin has no `/users/me`-equivalent.** `GET /users/me` throws
   `ForbiddenException` for accounts with no `tenantId`. The dashboard layout
   (`src/app/(dashboard)/layout.tsx`) falls back to JWT claims only for that role — there's
@@ -226,6 +240,27 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-07-28, sixth pass — password-change enforcement + request
+flow): found and fixed a real backend bug while investigating a reported "new users aren't
+forced to change their password" symptom — `UsersService.createUser` and
+`TenantsService.createTenantWithAdmin` never set `mustChangePassword: true`, relying on the
+Prisma column default instead, so no new account (first Admin, co-Admin, Analyst, Viewer) was
+ever actually forced through the change flow. Fixed at the source. Also closed a real gap in
+this file's own "two redundant layers" claim: `requireSession()` didn't check
+`mustChangePassword` even though `proxy.ts` did — it does now (`{ allowMustChangePassword }`
+param). Removed voluntary self-service password change for every role (Admins included) once
+past the mandatory first-time change; replaced with a request flow
+(`RequestPasswordChangeForm` → `POST /api/users/me/request-password-change`) that notifies a
+single designated recipient per tenant (the first-created Admin, or Super Admins if that
+Admin is the one requesting) via a new red-dot indicator on the sidebar's Users/Tenants nav
+link (`GET /api/users/me/pending-password-requests`, polled by `(dashboard)/layout.tsx`).
+Full design and verification log in
+`docs/superpowers/specs/2026-07-28-password-change-request-flow-design.md`. Test suite grew
+from 94 to 97 tests, all green; backend's grew too (see `backend/CLAUDE.md`). Note: `__tests__/`
+is currently `.gitignore`d in this repo (found while running the suite for this pass) — the
+97 tests exist locally but aren't tracked in git, so CI or a fresh clone would see zero. Not
+fixed as part of this pass since it wasn't part of the request; flagged here so it isn't lost.
 
 **Recently completed** (2026-07-23, fifth pass — a codebase-reading session that turned into
 a fix-then-build pass): three gaps found while reading the code with fresh eyes — `POST
@@ -314,7 +349,12 @@ like these two, doesn't require a pre-existing session.
 
 `(dashboard)/users` now has the full action set: list, create, edit, change role, reset
 password, delete (`UserRowActions`, self-targeting hidden client-side and rejected
-server-side either way). Nothing left here — next work in this area is really about the
+server-side either way). Users created here now always come back with
+`mustChangePassword: true` (backend fix, 2026-07-28 — see the "Recently completed" entry
+above). Sidebar's Users link (Admin) / Tenants link (Super Admin) shows a red dot when
+`GET /users/me/pending-password-requests` returns `hasPending: true` — one designated
+recipient per tenant, not a broadcast; see `backend/CLAUDE.md`'s hard-rules list for the
+exact targeting rule. Nothing left here — next work in this area is really about the
 security modules (row-level alert actions, once a module exists) or deeper test coverage.
 
 ## Tenant management (Super Admin)
@@ -342,16 +382,22 @@ on the backend). Nothing outstanding here for now.
 
 ## Testing
 
-17 files / 94 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
-matrix, every auth/user/tenant form's validation/success/error paths, `UserRowActions`'
-four dialogs, `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic,
-`ResetAdminPasswordButton`, and — the gap called out below in earlier passes — every Route
-Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
-cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
-unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
-token is safe to use in tests — this file never verifies signatures either). Still missing,
-roughly in order of value:
+18 files / 97 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+matrix, every auth/user/tenant form's validation/success/error paths (incl.
+`RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
+`UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
+and — the gap called out below in earlier passes — every Route Handler under
+`/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")` cookie-store mock
+plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid unsigned JWT for the
+session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned token is safe to use
+in tests — this file never verifies signatures either). **`__tests__/` is currently
+`.gitignore`d** — these tests run and pass locally but aren't tracked in git; a fresh clone
+or CI would see zero test files. Found 2026-07-28, not yet fixed. Still missing, roughly in
+order of value:
 
+- [ ] Fix `__tests__/` being gitignored (see above) — probably the single highest-value item
+      on this list now, since it makes every count in this section describe tests nobody but
+      the person who wrote them can actually run.
 - [ ] No e2e/Playwright setup — everything above is unit/component-level (Jest + RTL) only.
       The live curl-based smoke tests done this session (internship report §3.8) aren't
       automated/regression-proof; a Playwright suite against a real backend would be the
