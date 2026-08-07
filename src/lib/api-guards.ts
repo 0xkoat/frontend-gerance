@@ -30,8 +30,31 @@ export async function requireRole(...roles: UserRole[]) {
   return { error: null, session };
 }
 
+// For routes open to any authenticated tenant role (most module GET routes — see
+// backend/CLAUDE.md's module plan, decision 9: Viewer is read-only, not blocked, so GET
+// routes carry no @Roles() at all). requireRole() itself can't express "any role" since an
+// empty roles list would reject everyone via its own `!roles.includes(...)` check.
+export async function requireAuthenticated() {
+  const session = await getSession();
+  if (!session) {
+    return {
+      error: NextResponse.json(
+        { message: "Not authenticated" },
+        { status: 401 },
+      ),
+      session: null,
+    };
+  }
+  return { error: null, session };
+}
+
 export const requireAdmin = () => requireRole(UserRole.ADMIN);
 export const requireSuperAdmin = () => requireRole(UserRole.SUPER_ADMIN);
+// Most security-module mutation routes (assign, status change, create/edit/delete a
+// record) are Admin-or-Analyst-gated on the backend — Viewer is read-only by design (see
+// backend/CLAUDE.md's module plan, decision 9), never a third role here.
+export const requireAnalystOrAdmin = () =>
+  requireRole(UserRole.ADMIN, UserRole.ANALYST);
 // The backend's POST /users/:id/reset-password now accepts both roles too (see
 // backend/src/users/users.controller.ts) — a Super Admin resetting an Admin's password is
 // only valid when that Admin has no co-Admin in their tenant to do it instead

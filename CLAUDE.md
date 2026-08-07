@@ -63,6 +63,10 @@ src/
     (auth)/forgot-password, change-password             — public-ish, centered layout
     (dashboard)/dashboard, users, tenants, [module]      — sidebar layout, session-gated
     api/auth/..., api/users/..., api/tenants/...         — Route Handlers (BFF proxy layer)
+    api/vm/assets/                                       — first proxyToBackend()-backed
+                                                             route, see Phase 2 below; the
+                                                             other five modules' routes land
+                                                             in Phases 4-8, not built yet
     icon.tsx                                             — generated favicon (next/og)
     not-found.tsx, error.tsx, global-error.tsx, loading.tsx  — see error.md's `unstable_retry`
                                                                 note below; not-found.tsx
@@ -78,20 +82,34 @@ src/
     users/       — Admin user list, create-user form, UserRowActions (edit/role/reset/delete
                    dropdown + dialogs)
     tenants/     — Super Admin tenant list, create form, delete-confirm button
+    security/    — cross-module shared row-action components, added Phase 2 (2026-08-07):
+                   NextOnlyPagination, AssignmentControl, StatusTransitionMenu — every
+                   module page in Phases 3-8 reuses these instead of rebuilding row actions
+                   per module
   lib/
     session.ts    — cookie read/write, getSession()/requireSession() (server-only)
     jwt.ts        — pure JWT payload decode, shared by session.ts and proxy.ts (no
                     "server-only", since proxy runs in a separate runtime that can't import
                     next/headers)
-    backend.ts    — server-only fetch wrapper to the NestJS API (backendFetch /
-                    backendFetchAuthed)
-    api-guards.ts — shared requireAdmin()/requireSuperAdmin() fast-fail checks for Route
-                    Handlers (NOT the security boundary — see the file's own doc comment)
+    backend.ts    — server-only fetch wrapper to the NestJS API: backendFetch,
+                    backendFetchAuthed (refresh-capable, Route-Handler-only),
+                    backendFetchAuthedNoRefresh (Server Components), refreshAccessToken,
+                    applyRefreshCookie — see "Frontend auth architecture" above
+    proxy-route.ts — proxyToBackend() (added Phase 2, 2026-08-07): the shared factory behind
+                    every Route Handler under api/{vm,edr,siem,cti,soar,dfir,assets}/**
+    query-filters.ts — buildQueryParams()/hasNextPage(), added Phase 2
+    api-guards.ts — shared requireAdmin()/requireSuperAdmin()/requireAnalystOrAdmin()/
+                    requireAuthenticated() fast-fail checks for Route Handlers (NOT the
+                    security boundary — see the file's own doc comment)
     zod-errors.ts — fieldErrorsFromZod(): first-issue-per-field from a ZodError, used by
                     every form that shows inline field errors
-    validations/  — zod schemas mirrored from backend DTOs
+    validations/  — zod schemas mirrored from backend DTOs (now incl. validations/vm.ts)
     mock-data.ts, severity.ts, nav.ts
-  types/auth.ts  — UserRole, SessionClaims — hand-matched to backend/src/generated/prisma
+  types/
+    auth.ts       — UserRole, SessionClaims — hand-matched to backend/src/generated/prisma
+    security.ts, vm.ts, edr.ts, siem.ts, cti.ts, soar.ts, dfir.ts, assets.ts — added Phase 2
+                    (2026-08-07): enums, record types, and each module's
+                    *_TRANSITIONABLE_STATUSES, hand-matched to backend/prisma/schema.prisma
   proxy.ts       — optimistic route protection (see below)
 __tests__/       — Jest + RTL, root-level (not under src/) so it's never mistaken for a route
 test-utils.ts    — shared mockJsonResponse()/fakeToken() helpers, also root-level: anything
@@ -292,6 +310,21 @@ section is the working checklist — organized by area, not just priority order,
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
 
+**Recently completed** (2026-08-07, eighth pass — Phase 2 shared foundation): the
+scaffolding every module page in Phases 3-8 will build on — see Phase 2 of the adaptation
+plan below for the full checklist. Highlights: `src/types/{security,vm,edr,siem,cti,soar,
+dfir,assets}.ts` (enums, record types, `*_TRANSITIONABLE_STATUSES` constants), `src/lib/
+severity.ts` reworked to the real uppercase `Severity` (breaking `mock-data.ts`'s casing
+along with it, on purpose), `src/lib/query-filters.ts` (`buildQueryParams`/`hasNextPage`),
+`src/components/security/next-only-pagination.tsx`, `src/lib/proxy-route.ts`'s
+`proxyToBackend()` (proven against a real `src/app/api/vm/assets/route.ts`), and
+`src/components/security/{assignment-control,status-transition-menu}.tsx`. One real bug
+caught immediately by building a real route against the new helper (exactly the reason
+decision 6 says to prove it first): an untyped `<Select>` with no `value` prop couldn't
+infer its generic, failing `tsc` — fixed with an explicit `<Select<string>>` before it could
+repeat across the other ~35 routes. Test suite grew from 110 to 143 tests, all green;
+`tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all verified clean.
+
 **Recently completed** (2026-08-07, seventh pass — Phase 1 auth migration): full refresh-token
 migration matching the backend's 2026-08-05/06 changes (see "Frontend auth architecture"
 above and Phase 1 of the adaptation plan below for the complete checklist). Highlights: new
@@ -474,13 +507,16 @@ since 2026-08-06.
 
 ## Testing
 
-19 files / 110 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+24 files / 143 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
 matrix, every auth/user/tenant form's validation/success/error paths (incl.
 `RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
 `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
 the full refresh-token migration (`auth-token-refresh.test.ts`, added 2026-08-07 —
 `refreshAccessToken()`, `backendFetchAuthed`'s retry-on-401, and the login/refresh/logout
-Route Handlers' cookie relay), and — the gap called out below in earlier passes — every
+Route Handlers' cookie relay), Phase 2's shared foundation (`vm-assets-route.test.ts`,
+`query-filters.test.ts`, `next-only-pagination.test.tsx`, `assignment-control.test.tsx`,
+`status-transition-menu.test.tsx`, added 2026-08-07), and — the gap called out below in
+earlier passes — every
 Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
 cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
 unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
@@ -773,59 +809,80 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       pre-migration design and never updated alongside `auth.module.ts`'s `15m`. Fixed to
       `15m`; `backend/CLAUDE.md` should get a matching note next time it's touched.
 
-## Phase 2, shared foundation (before any module page)
+## Phase 2, shared foundation (before any module page) — DONE 2026-08-07
 
-- [ ] `src/types/security.ts`: hand-mirror `Severity`, `ModuleName`,
-      `VmVulnerabilitiesStatus`, `CtiIocType`, `EdrEndpointStatus`, `EdrDetectionStatus`,
-      `SiemAlertStatus`, `SoarExecutionStatus`, `DfirIncidentStatus`, `DfirLinkSourceType`
-      from `backend/prisma/schema.prisma`'s enum blocks (all uppercase, see decision 5
-      above), same `as const` object plus derived type pattern as `src/types/auth.ts`.
-- [ ] Per-module record types, hand-matched to the Prisma models in `backend/prisma/
-      schema.prisma`: `VmAsset`, `VmVulnerability`, `EdrEndpoint`, `EdrDetection`, `SiemLog`,
-      `SiemAlert`, `CtiIoc`, `SoarPlaybook`, `SoarExecution`, `DfirIncident`, `DfirLink`,
-      `AssetFeedEntry`, `TenantModule`. Every assignable record type needs `assignedToUserId:
-      string | null` and its module's status field, every module record needs `rawData:
-      unknown | null` if it is ever going to be shown (most list views will not need it).
-- [ ] Rework `src/lib/severity.ts` to key off the new uppercase `Severity` type instead of
-      the mock lowercase one (decision 5). Check every current caller of `SEVERITY_COLOR`/
-      `SEVERITY_LABEL`/`SEVERITY_ORDER` for the casing change before deleting the old mock
-      type, `mock-data.ts` itself should keep the lowercase type only if it is still needed
-      for whatever the dashboard rework in Phase 9 leaves behind, otherwise delete it there
-      too.
-- [ ] Shared query-filter builder: one function turning a `{ severity?, assignedToUserId?,
-      dateFrom?, dateTo?, page?, pageSize? }` object into a `URLSearchParams`, serializing
-      `Date` values as ISO strings (the backend's `BaseQueryDto` uses `class-transformer`'s
-      `@Type(() => Date)`, which needs a parseable ISO string on the wire). Reused by every
-      module's list Route Handler and the asset feed's.
-- [ ] Shared "Next only" pagination control per decision 9 above, a simplified variant of
-      the Previous/Next buttons already built for `(dashboard)/users`, without the "Page X"
-      label that implies a known total.
-- [ ] `proxyToBackend()` helper per decision 6 above, in `src/lib/backend.ts` or a new
-      `src/lib/proxy-route.ts`: takes a backend path, HTTP method, an optional zod schema to
-      validate the incoming body against, and an optional role guard function (reusing/
-      extending `src/lib/api-guards.ts`'s `requireAdmin`/`requireSuperAdmin`, plus a new
-      `requireAnalystOrAdmin` most module mutation routes need). Returns a Route Handler
-      function. Write this against one real route first (recommend `VM`'s asset list, the
-      simplest shape) before generating the other ~35, to catch shape mistakes in the helper
-      itself before they are repeated forty times.
-- [ ] Shared `AssignmentControl` component: for Admin, a searchable select of that tenant's
-      Analysts and Admins (no existing "list tenant members" endpoint returns just names for
-      a picker, reuse `GET /users` filtered client-side, or add a lighter query param
-      backend-side if the full user list proves too heavy, flag this explicitly if it comes
-      up rather than silently over-fetching); for Analyst, a single "Assign to me" button
-      with no picker, matching `resolveAssignee`'s server-side rule exactly (an Analyst
-      cannot assign to anyone else, the backend already rejects it, but the UI should not
-      offer the option in the first place). Plus an "Unassign" action wired to each module's
-      `DELETE .../assign` route. Must also surface the `409 Conflict` the backend now returns
-      (2026-08-07) when assigning an already-resolved/contained SIEM/EDR/DFIR record —
-      `firstErrorMessage()` already extracts a readable message from it, this component just
-      needs to display that instead of a generic failure toast. Does not apply to VM.
-- [ ] Shared `StatusTransitionMenu` component, parameterized by a module's allowed target
-      statuses (SIEM/EDR: `ESCALATED`, `RESOLVED`; DFIR: `ESCALATED`, `CONTAINED`,
-      `RESOLVED`; VM: no status-transition route exists, only its own separate `PATCH
-      vulnerabilities/:id/status` accepting the full `VmVulnerabilitiesStatus` enum, model
-      this one separately rather than forcing it through the same component if the shapes
-      do not actually line up).
+- [x] `src/types/security.ts`: `Severity`, `ModuleName`, `TenantModule`, `BaseQueryFilters`,
+      `AssignPayload`. Per-module enums/statuses split into their own files instead
+      (`src/types/{vm,edr,siem,cti,soar,dfir,assets}.ts`) rather than one growing file — see
+      each file's own header comment. All hand-mirrored against a full read of
+      `backend/prisma/schema.prisma`, same `as const` object plus derived type pattern as
+      `src/types/auth.ts`.
+- [x] Per-module record types in those same files: `VmAsset`, `VmVulnerability`,
+      `EdrEndpoint`, `EdrDetection`, `SiemLog`, `SiemAlert`, `CtiIoc`, `SoarPlaybook`,
+      `SoarExecution`, `DfirIncident`, `DfirLink`, `DfirIncidentDetail` (the one detail-route
+      shape, `DfirIncident & { links: DfirLink[] }`), `AssetFeedEntry`, `TenantModule`. Every
+      assignable record has `assignedToUserId: string | null`; `rawData: unknown | null`
+      only on the models that actually have it in the schema (not all do — `VmAsset`,
+      `EdrEndpoint`, `SoarPlaybook`/`SoarExecution`, `DfirIncident`/`DfirLink` don't). Also
+      added `{SIEM,EDR,DFIR}_*_TRANSITIONABLE_STATUSES` constants (not originally listed
+      here, needed by `StatusTransitionMenu` below) mirroring each status DTO's `@IsIn(...)`
+      restriction. Verified: list endpoints never `include` relations (checked every
+      service's `findMany`/`findUnique` call), so these are flat shapes with foreign-key ids
+      only, no nested `asset`/`assignedToUser` objects.
+- [x] Reworked `src/lib/severity.ts` to key off the real uppercase `Severity`. Its two
+      callers (`AlertsTable`, `SeverityBreakdown`) still consume `src/lib/mock-data.ts`,
+      which was uppercased to match rather than kept lowercase — `mock-data.ts`'s own
+      `Severity` type now just re-exports the real one instead of duplicating it, so there's
+      one casing in the codebase, not two, even though the dashboard's data is still fake
+      until Phase 9.
+- [x] `src/lib/query-filters.ts`: `buildQueryParams()` (the object → `URLSearchParams`
+      builder, ISO date serialization) and `hasNextPage(itemCount, pageSize)` (the "was the
+      page full" heuristic every list page's pagination needs — not originally called out as
+      its own function, added since every list page will need this exact check).
+- [x] `src/components/security/next-only-pagination.tsx`: `NextOnlyPagination`, a
+      simplified variant of `(dashboard)/users`' Previous/Next controls, no "Page X of Y".
+- [x] `src/lib/proxy-route.ts`'s `proxyToBackend()`, proven against
+      `src/app/api/vm/assets/route.ts` (`GET`/`POST`, the latter using a new
+      `src/lib/validations/vm.ts` and `api-guards.ts`'s new `requireAnalystOrAdmin` /
+      `requireAuthenticated` — the latter added because `requireRole()` can't express "any
+      authenticated role" with an empty roles list without rejecting everyone). One real
+      shape bug caught by building this real route immediately, exactly per decision 6's
+      reasoning for proving the helper first: `<Select>` with no `value`/`defaultValue` prop
+      couldn't infer its generic from context, failing `tsc` until given an explicit
+      `<Select<string>>` — would have hit the same error 35 more times otherwise.
+- [x] `src/components/security/assignment-control.tsx`'s `AssignmentControl`: Admin gets a
+      plain (not searchable) `<Select>` of `assignableUsers` passed down as a prop — no
+      combobox/cmdk-equivalent primitive exists in this shadcn preset, flagged in the
+      component's own comment as a simplification to revisit if a tenant's member list ever
+      gets large, not silently built as if it were real search. `assignableUsers` is fetched
+      once per list page (`GET /users`, filtered client-side to `ADMIN`/`ANALYST`) and passed
+      down, not re-fetched per row. Analyst gets a single "Assign to me" button, matching
+      `resolveAssignee`'s server-side rule exactly. Viewer renders nothing. Unassign wired to
+      the same endpoint via `DELETE`. The 2026-08-07 `409` (already-resolved/contained)
+      needs no special-casing — `proxyToBackend()`'s error branch already normalizes it to
+      `{ message }` like any other error status, so the component just shows `data.message`
+      via `toast.error()`.
+- [x] `src/components/security/status-transition-menu.tsx`'s `StatusTransitionMenu`,
+      generic over the module's status type, parameterized by a
+      `transitionableStatuses` array (from the new `*_TRANSITIONABLE_STATUSES` constants
+      above) — a dropdown menu excluding whatever status is already current. Does not cover
+      VM (confirmed no shared shape — `PATCH vulnerabilities/:id/status` takes the full
+      `VmVulnerabilitiesStatus` enum, not a restricted transition set) or SOAR (no
+      status-transition route exists for `SoarExecution` at all, it's already terminal by
+      the time a human sees it).
+- [x] Tests: `__tests__/vm-assets-route.test.ts` (7, proxyToBackend/VM route),
+      `__tests__/query-filters.test.ts` (6), `__tests__/next-only-pagination.test.tsx` (6),
+      `__tests__/assignment-control.test.tsx` (7), `__tests__/status-transition-menu.test.tsx`
+      (6) — 32 new tests. Full suite: 143 tests (was 110), all green; `tsc --noEmit`,
+      `eslint`, `prettier --check`, and `next build` all clean (same one pre-existing,
+      unrelated `eslint` finding in `user-row-actions.tsx` as Phase 1, still untouched).
+      `StatusTransitionMenu`/`AssignmentControl`'s dropdown-menu interactions are tested with
+      real click-through (`userEvent` + `screen.findByRole("menu")`), matching the pattern
+      already established by `user-row-actions.test.tsx`; `AssignmentControl`'s Admin
+      `<Select>` picker is tested for presence/placeholder only, not a full open-and-choose
+      interaction — no existing test in this suite drives that primitive yet, and the
+      underlying submit logic is already fully covered via the Analyst/Unassign paths, which
+      exercise the exact same `submit()` function.
 
 ## Phase 3, VM module
 

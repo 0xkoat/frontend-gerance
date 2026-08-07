@@ -1,11 +1,14 @@
-// Placeholder data for the Security Overview dashboard. The SIEM module doesn't exist on
-// the backend yet (see backend/CLAUDE.md — only auth/users/tenants are implemented), so
-// there's nothing real to fetch. Shapes here loosely follow the `siem_alerts` table and the
-// unified event envelope from the architecture spec (severity: low|medium|high|critical),
-// so swapping this for a real `GET /api/siem/alerts` proxy later should mostly mean
-// deleting this file and pointing the dashboard at real data with the same shape.
+// Placeholder data for the Security Overview dashboard. As of 2026-08-06 the SIEM module
+// (and all five others) are fully built on the backend — this file just hasn't been swapped
+// out yet, see CLAUDE.md's Phase 9 ("asset feed and dashboard integration") for the real
+// replacement plan. Severity now imports the real backend enum (uppercase) rather than
+// duplicating a mock lowercase one — see src/lib/severity.ts's comment and CLAUDE.md's
+// adaptation plan, decision 5, for why that changed 2026-08-07 even though this file's own
+// data is still fake.
 
-export type Severity = "critical" | "high" | "medium" | "low";
+import type { Severity } from "@/types/security";
+
+export type { Severity };
 export type AlertStatus = "open" | "assigned" | "escalated" | "resolved";
 
 export interface MockAlert {
@@ -29,10 +32,10 @@ export const mockKpis = {
 };
 
 export const mockSeverityBreakdown: { severity: Severity; count: number }[] = [
-  { severity: "critical", count: 75 },
-  { severity: "high", count: 88 },
-  { severity: "medium", count: 94 },
-  { severity: "low", count: 57 },
+  { severity: "CRITICAL", count: 75 },
+  { severity: "HIGH", count: 88 },
+  { severity: "MEDIUM", count: 94 },
+  { severity: "LOW", count: 57 },
 ];
 
 export const mockTopAttackSources = [
@@ -49,7 +52,7 @@ export const mockAlerts: MockAlert[] = [
   {
     id: "ALT-0091",
     title: "Brute force — RDP exposed",
-    severity: "critical",
+    severity: "CRITICAL",
     source: "185.220.101.47",
     destination: "10.0.1.12",
     module: "SIEM",
@@ -61,7 +64,7 @@ export const mockAlerts: MockAlert[] = [
   {
     id: "ALT-0090",
     title: "Lateral movement — SMB relay",
-    severity: "critical",
+    severity: "CRITICAL",
     source: "10.0.1.12",
     destination: "10.0.2.45",
     module: "EDR",
@@ -73,7 +76,7 @@ export const mockAlerts: MockAlert[] = [
   {
     id: "ALT-0089",
     title: "Ransomware indicator — file encryption spike",
-    severity: "critical",
+    severity: "CRITICAL",
     source: "10.0.4.22",
     destination: null,
     module: "EDR",
@@ -85,7 +88,7 @@ export const mockAlerts: MockAlert[] = [
   {
     id: "ALT-0088",
     title: "Outbound C2 beaconing detected",
-    severity: "high",
+    severity: "HIGH",
     source: "10.0.3.98",
     destination: "91.108.4.200",
     module: "SIEM",
@@ -97,7 +100,7 @@ export const mockAlerts: MockAlert[] = [
   {
     id: "ALT-0087",
     title: "Privilege escalation — SYSTEM token abuse",
-    severity: "high",
+    severity: "HIGH",
     source: "10.0.1.77",
     destination: null,
     module: "EDR",
@@ -109,7 +112,7 @@ export const mockAlerts: MockAlert[] = [
   {
     id: "ALT-0086",
     title: "Suspicious PowerShell execution chain",
-    severity: "high",
+    severity: "HIGH",
     source: "10.0.3.14",
     destination: null,
     module: "EDR",
