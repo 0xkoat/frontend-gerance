@@ -61,18 +61,21 @@ src/
   app/
     login/                                             — Figure 1 split-panel, NOT in (auth)
     (auth)/forgot-password, change-password             — public-ish, centered layout
-    (dashboard)/dashboard, users, tenants, vm, edr, [module] — sidebar layout, session-gated;
+    (dashboard)/dashboard, users, tenants, vm, edr, siem,
+      [module]                                            — sidebar layout, session-gated;
                                                              vm/, vm/assets/ (Phase 3),
                                                              edr/, edr/endpoints/ (Phase 4),
-                                                             both 2026-08-07, real module
-                                                             pages; [module] still covers the
-                                                             other four, not built yet
+                                                             siem/, siem/logs/ (Phase 5), all
+                                                             2026-08-07, real module pages;
+                                                             [module] still covers the other
+                                                             three, not built yet
     api/auth/..., api/users/..., api/tenants/...         — Route Handlers (BFF proxy layer)
-    api/vm/**, api/edr/**                                — VM (Phase 3) and EDR (Phase 4)
-                                                             module routes, both 2026-08-07,
-                                                             all via proxyToBackend() (Phase
-                                                             2); the other four modules' routes
-                                                             land in Phases 5-8, not built yet
+    api/vm/**, api/edr/**, api/siem/**                   — VM (Phase 3), EDR (Phase 4), SIEM
+                                                             (Phase 5) module routes, all
+                                                             2026-08-07, all via
+                                                             proxyToBackend() (Phase 2); the
+                                                             other three modules' routes land
+                                                             in Phases 6-8, not built yet
     icon.tsx                                             — generated favicon (next/og)
     not-found.tsx, error.tsx, global-error.tsx, loading.tsx  — see error.md's `unstable_retry`
                                                                 note below; not-found.tsx
@@ -99,6 +102,9 @@ src/
                    no create — no manual create route exists), detections/endpoints tables.
                    Uses the shared StatusTransitionMenu directly (unlike VM) — EDR's status
                    route really is restricted to ESCALATED/RESOLVED
+    siem/        — SIEM module (Phase 5, 2026-08-07): alerts table (shared AssignmentControl
+                   + StatusTransitionMenu, same restricted shape as EDR's), a read-only
+                   LogsTable (no row actions — no PATCH/DELETE route exists for SiemLog)
   lib/
     session.ts    — cookie read/write, getSession()/requireSession() (server-only)
     jwt.ts        — pure JWT payload decode, shared by session.ts and proxy.ts (no
@@ -117,8 +123,8 @@ src/
     zod-errors.ts — fieldErrorsFromZod(): first-issue-per-field from a ZodError, used by
                     every form that shows inline field errors
     validations/  — zod schemas mirrored from backend DTOs (now incl. validations/vm.ts,
-                    validations/edr.ts, and validations/security.ts's shared
-                    assignPayloadSchema)
+                    validations/edr.ts, validations/siem.ts, and validations/security.ts's
+                    shared assignPayloadSchema)
     mock-data.ts, severity.ts, nav.ts
   types/
     auth.ts       — UserRole, SessionClaims — hand-matched to backend/src/generated/prisma
@@ -324,6 +330,18 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-08-07, eleventh pass — Phase 5, SIEM module): the third module
+page — real alerts list, replacing what the mock dashboard alerts table was standing in
+for, plus a raw-logs page. The Phase 5 checklist explicitly flagged a genuine open
+question (does `GET /siem/logs` deserve its own page, or is it not worth building before a
+real user asks) rather than deciding it silently either way; asked directly, answered
+"build both" — `(dashboard)/siem` (alerts, same filter set as VM: severity/status/"assigned
+to me") and `(dashboard)/siem/logs` (read-only, unpaginated, no row actions — no such route
+exists for `SiemLog`). SIEM's alert status route is a restricted `ESCALATED`/`RESOLVED` set
+like EDR's, so it reuses the shared `StatusTransitionMenu` directly, same as EDR did. Test
+suite grew from 179 to 188 tests; `tsc --noEmit`, `eslint`, `prettier --check`, and
+`next build` all verified clean.
 
 **Recently completed** (2026-08-07, tenth pass — Phase 4, EDR module): the second module
 page, following Phase 3's pattern closely — see Phase 4 of the adaptation plan for the full
@@ -547,7 +565,7 @@ since 2026-08-06.
 
 ## Testing
 
-32 files / 179 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+33 files / 188 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
 matrix, every auth/user/tenant form's validation/success/error paths (incl.
 `RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
 `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
@@ -558,8 +576,9 @@ Route Handlers' cookie relay), Phase 2's shared foundation (`vm-assets-route.tes
 `status-transition-menu.test.tsx`, added 2026-08-07), Phase 3's VM module
 (`vm-routes.test.ts`, `create-asset-form.test.tsx`, `asset-row-actions.test.tsx`,
 `vulnerability-status-menu.test.tsx`, added 2026-08-07), Phase 4's EDR module
-(`edr-routes.test.ts`, `endpoint-row-actions.test.tsx`, added 2026-08-07), and — the gap
-called out below in earlier passes — every
+(`edr-routes.test.ts`, `endpoint-row-actions.test.tsx`, added 2026-08-07), Phase 5's SIEM
+module (`siem-routes.test.ts`, added 2026-08-07), and — the gap called out below in
+earlier passes — every
 Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
 cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
 unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
@@ -1002,17 +1021,33 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       Admin-only) applies identically here — same comment, same fetch-only-if-Admin guard,
       not rediscovered from scratch.
 
-## Phase 5, SIEM module
+## Phase 5, SIEM module — DONE 2026-08-07
 
-- [ ] `src/app/(dashboard)/siem/page.tsx`: alerts list, replacing the mock alerts table
-      described in "Known gaps" above. Same filter set. Consider whether `GET logs` needs
-      its own view at all for a first pass, logs are the raw pre-alert record and may not be
-      worth a dedicated page before there is a real user asking for it, flag this rather
-      than silently building or silently skipping it.
-- [ ] Row actions: assign, unassign, status change (`ESCALATED`/`RESOLVED` only).
-- [ ] Zod schema mirroring `UpdateSiemAlertStatusDto`, the shared `AssignDto`.
-- [ ] Route Handlers under `src/app/api/siem/**`.
-- [ ] Tests, same shape as Phase 3.
+- [x] `src/app/(dashboard)/siem/page.tsx`: alerts list (severity, title/description, MITRE,
+      status, assignee), same filter set as VM (severity, status, "assigned to me") —
+      `SiemQueryDto`, like `VmQueryDto`, adds `status` on top of the shared `BaseQueryDto`,
+      unlike EDR's narrower set. **The `GET /siem/logs` question was asked explicitly rather
+      than silently decided either way** (see this session's own transcript) — answer: build
+      it, as `src/app/(dashboard)/siem/logs/page.tsx`, read-only and unpaginated (`listLogs`
+      takes no query params or pagination on the backend at all), no row actions (no
+      PATCH/DELETE route exists for `SiemLog`).
+- [x] Row actions: `AssignmentControl` + shared `StatusTransitionMenu`
+      (`ESCALATED`/`RESOLVED` only, same restricted shape as EDR's, not VM's full-enum one).
+- [x] Zod schema: `updateSiemAlertStatusSchema` (`src/lib/validations/siem.ts`), reusing the
+      shared `assignPayloadSchema`. No create schema — alerts and logs both only appear via
+      `ingest()`, same as EDR's endpoints.
+- [x] Route Handlers, all via `proxyToBackend()`: `siem/logs` (`GET` only), `siem/alerts`
+      (`GET`), `siem/alerts/[id]/status` (`PATCH`), `siem/alerts/[id]/assign`
+      (`POST`/`DELETE`).
+- [x] Tests: `siem-routes.test.ts` (9). No new component-level test file needed —
+      `AlertsTable`/`LogsTable` compose only already-tested shared components
+      (`AssignmentControl`, `StatusTransitionMenu`) or render read-only data with no
+      interactive logic of their own, matching the precedent set by `VulnerabilitiesTable`/
+      `DetectionsTable`/`EndpointsTable`/`AssetsTable` (Phases 3-4), none of which have
+      dedicated test files either — only the interactive components they compose do. Full
+      suite: 188 tests (was 179), all green; `tsc --noEmit`, `eslint`, `prettier --check`,
+      and `next build` all clean (same one pre-existing, unrelated `eslint` finding, still
+      untouched).
 
 ## Phase 6, CTI module
 
