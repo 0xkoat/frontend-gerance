@@ -62,23 +62,21 @@ src/
     login/                                             — Figure 1 split-panel, NOT in (auth)
     (auth)/forgot-password, change-password             — public-ish, centered layout
     (dashboard)/dashboard, users, tenants, vm, edr, siem,
-      cti, soar, [module]                                 — sidebar layout, session-gated;
+      cti, soar, dfir, [module]                           — sidebar layout, session-gated;
                                                              vm/, vm/assets/ (Phase 3),
                                                              edr/, edr/endpoints/ (Phase 4),
                                                              siem/, siem/logs/ (Phase 5),
                                                              cti/ (Phase 6), soar/ (Phase 7),
-                                                             all 2026-08-07, real module
-                                                             pages; [module] still covers
-                                                             DFIR, not built yet
+                                                             dfir/, dfir/[id]/ (Phase 8), all
+                                                             2026-08-07 — all six modules now
+                                                             have real pages; [module] is
+                                                             unreachable for any slug now but
+                                                             not yet deleted (Phase 12's job)
     api/auth/..., api/users/..., api/tenants/...         — Route Handlers (BFF proxy layer)
     api/vm/**, api/edr/**, api/siem/**, api/cti/**,
-      api/soar/**                                         — VM (Phase 3), EDR (Phase 4), SIEM
-                                                             (Phase 5), CTI (Phase 6), SOAR
-                                                             (Phase 7) module routes, all
+      api/soar/**, api/dfir/**                            — all six modules' routes, all
                                                              2026-08-07, all via
-                                                             proxyToBackend() (Phase 2); DFIR's
-                                                             routes land in Phase 8, not built
-                                                             yet
+                                                             proxyToBackend() (Phase 2)
     icon.tsx                                             — generated favicon (next/og)
     not-found.tsx, error.tsx, global-error.tsx, loading.tsx  — see error.md's `unstable_retry`
                                                                 note below; not-found.tsx
@@ -116,6 +114,9 @@ src/
                    (severity-only trigger picker, raw JSON actions textarea, isActive
                    toggle), a read-only ExecutionsTable. Admin-only, unlike every other
                    module's Admin-or-Analyst mutation routes
+    dfir/        — DFIR module (Phase 8, 2026-08-07, last of the six): incidents table
+                   (shared AssignmentControl + StatusTransitionMenu), LinkRecordForm and
+                   LinksTable for the one real per-record detail page's DfirLink[] trace
   lib/
     session.ts    — cookie read/write, getSession()/requireSession() (server-only)
     jwt.ts        — pure JWT payload decode, shared by session.ts and proxy.ts (no
@@ -135,8 +136,8 @@ src/
                     every form that shows inline field errors
     validations/  — zod schemas mirrored from backend DTOs (now incl. validations/vm.ts,
                     validations/edr.ts, validations/siem.ts, validations/cti.ts,
-                    validations/soar.ts, and validations/security.ts's shared
-                    assignPayloadSchema)
+                    validations/soar.ts, validations/dfir.ts, and
+                    validations/security.ts's shared assignPayloadSchema)
     mock-data.ts, severity.ts, nav.ts
   types/
     auth.ts       — UserRole, SessionClaims — hand-matched to backend/src/generated/prisma
@@ -342,6 +343,25 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-08-07, fourteenth pass — Phase 8, DFIR module, closing out all
+six security modules): the sixth and last module page, and the one with real structural
+complexity the other five didn't have — a genuine detail page
+(`(dashboard)/dfir/[id]`, the only module with one, per decision 8) showing an incident's
+full `DfirLink[]` trace back to whatever record across the other five modules led to it,
+plus a manual link-record form with a raw UUID input (no id-typeahead endpoint exists —
+noted as a real limitation, not built past what the backend supports) and an unlink action
+per row. The nested dynamic route for unlinking
+(`dfir/incidents/[id]/links/[linkId]`) proved Phase 2's `proxyToBackend()` helper handles a
+two-segment dynamic path with no changes needed. Both the list and detail pages reuse the
+shared `AssignmentControl`/`StatusTransitionMenu` — DFIR's status route is a genuine
+restricted transition set (`ESCALATED`/`CONTAINED`/`RESOLVED`), the same shape SIEM/EDR use.
+**With this phase, all six security modules (VM, EDR, SIEM, CTI, SOAR, DFIR) have real,
+backend-wired frontend pages** — the single largest gap this file tracked since 2026-08-06
+is closed; what's left of the adaptation plan is Phases 9-13 (asset feed/dashboard
+integration, SSE, tenant module activation UI, RBAC/nav polish, and a final verification
+pass), none of which are new module work. Test suite grew from 216 to 233 tests;
+`tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all verified clean.
 
 **Recently completed** (2026-08-07, thirteenth pass — Phase 7, SOAR module): the fifth
 module page, and the first with genuinely different RBAC from every other module — SOAR's
@@ -588,21 +608,26 @@ on the backend). Nothing outstanding for what was built.
 
 ## Security modules, asset feed, and real-time delivery (SIEM, SOAR, CTI, EDR, DFIR, VM)
 
-**All six modules, the asset aggregator, and the SSE event stream are fully built on the
-backend as of 2026-08-06** (see `backend/CLAUDE.md`'s module implementation plan, every
-phase checked). Nothing on the frontend consumes any of it yet: `(dashboard)/[module]/page.tsx`
-is still the placeholder stub, `src/lib/mock-data.ts` still backs the dashboard, and there is
-no Route Handler, page, or type anywhere under `src/` for any of `vm`, `edr`, `siem`, `cti`,
-`soar`, `dfir`, `assets`, or `events`. This is the single largest remaining gap between the
-two halves of this repository. Full phased plan, decisions, and verified API contract are in
-the dedicated section below, "Backend to frontend adaptation plan (2026-08-06)". Do not
-re-derive the backend route list by hand when picking up this work, the plan already has it
-verified against the actual controller source, re-verify only if the backend has changed
-since 2026-08-06.
+**All six modules are fully built on both the backend (since 2026-08-06) and now the
+frontend too (Phases 3-8, all done 2026-08-07 in one continuous session — see each phase's
+own entry in the adaptation plan below for what shipped and what was found along the way).**
+`vm`, `edr`, `siem`, `cti`, `soar`, and `dfir` all have real pages, real Route Handlers (all
+via the shared `proxyToBackend()`), and real types under `src/`. `(dashboard)/[module]/
+page.tsx` is now unreachable for all six slugs in practice (every one resolves to its own
+real folder first) but not yet deleted — that's Phase 12's explicit job, along with
+`src/lib/nav.ts`'s now-redundant `isModuleSlug` guard. **What's still not wired to real
+data: the asset aggregator (`GET /assets/feed`) and the SSE event stream (`GET
+/events/stream`)** — those are Phases 9-10 below, along with replacing
+`src/lib/mock-data.ts`'s still-fake dashboard content. Full phased plan, decisions, and
+verified API contract are in the dedicated section below, "Backend to frontend adaptation
+plan (2026-08-06)". Do not re-derive the backend route list by hand when picking up Phase 9
+onward, the plan already has it verified against the actual controller source, re-verify
+only if the backend has changed since 2026-08-06 (or 2026-08-07's hardening note, already
+folded in).
 
 ## Testing
 
-38 files / 216 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+41 files / 233 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
 matrix, every auth/user/tenant form's validation/success/error paths (incl.
 `RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
 `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
@@ -617,8 +642,10 @@ Route Handlers' cookie relay), Phase 2's shared foundation (`vm-assets-route.tes
 module (`siem-routes.test.ts`, added 2026-08-07), Phase 6's CTI module
 (`cti-routes.test.ts`, `create-ioc-form.test.tsx`, `ioc-row-actions.test.tsx`, added
 2026-08-07), Phase 7's SOAR module (`soar-routes.test.ts`, `create-playbook-form.test.tsx`,
-`playbook-row-actions.test.tsx`, added 2026-08-07), and — the gap called out below in
-earlier passes — every
+`playbook-row-actions.test.tsx`, added 2026-08-07), Phase 8's DFIR module
+(`dfir-routes.test.ts`, `link-record-form.test.tsx`, `links-table.test.tsx`, added
+2026-08-07 — closing out all six modules), and — the gap called out below in earlier passes
+— every
 Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
 cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
 unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
@@ -1152,21 +1179,45 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       `eslint`, `prettier --check`, and `next build` all clean (same one pre-existing,
       unrelated `eslint` finding, still untouched).
 
-## Phase 8, DFIR module
+## Phase 8, DFIR module — DONE 2026-08-07 (last of the six modules)
 
-- [ ] `src/app/(dashboard)/dfir/page.tsx`: incident list (title, severity, status, assignee).
-- [ ] `src/app/(dashboard)/dfir/[id]/page.tsx`: the one real detail page per decision 8
-      above, incident fields plus its `DfirLink[]` (source type, source id), a manual
-      "link an existing record" form (`sourceType` select from `DfirLinkSourceType`'s six
-      values, `sourceId` as a raw UUID input, there is no id-typeahead/search endpoint to
-      build anything friendlier against, note this as a real limitation rather than
-      over-building past what the backend supports), and unlink per row.
-- [ ] Row actions on the list: assign, unassign, status change (`ESCALATED`, `CONTAINED`,
-      `RESOLVED`, per the five-value `DfirIncidentStatus`).
-- [ ] Zod schemas mirroring `UpdateDfirIncidentStatusDto`, `CreateDfirLinkDto`, the shared
-      `AssignDto`.
-- [ ] Route Handlers under `src/app/api/dfir/**`.
-- [ ] Tests, same shape as Phase 3, plus the detail page's link/unlink flow.
+- [x] `src/app/(dashboard)/dfir/page.tsx`: incident list (severity, title/description,
+      MITRE, status, assignee), same filter set as VM/SIEM (`DfirQueryDto` also adds
+      `status` to the shared `BaseQueryDto`), `NextOnlyPagination`. Title links through to
+      the detail page.
+- [x] `src/app/(dashboard)/dfir/[id]/page.tsx`: the one real detail page per decision 8,
+      incident fields plus its full `DfirLink[]` (source type, source id) via `LinksTable`,
+      a manual "link an existing record" form (`LinkRecordForm`: `sourceType` select from
+      `DfirLinkSourceType`'s six values, `sourceId` as a raw UUID input — confirmed no
+      id-typeahead/search endpoint exists, a real limitation rather than over-built past
+      what the backend supports), and an `Unlink` action per row (no confirm dialog, matching
+      `AssignmentControl`'s Unassign — low-stakes, and idempotent re-linking exists if
+      needed). 404s from the backend map to `notFound()`, matching the existing
+      `(dashboard)/tenants/[id]` pattern.
+- [x] Row actions on the list and the detail page, both: shared `AssignmentControl` +
+      `StatusTransitionMenu` (`ESCALATED`/`CONTAINED`/`RESOLVED`, the three-value
+      `DFIR_INCIDENT_TRANSITIONABLE_STATUSES`).
+- [x] Zod schemas: `updateDfirIncidentStatusSchema`, `createDfirLinkSchema`
+      (`src/lib/validations/dfir.ts`), reusing the shared `assignPayloadSchema`.
+- [x] Route Handlers, all via `proxyToBackend()`: `dfir/incidents` (`GET`),
+      `dfir/incidents/[id]` (`GET`, the detail route), `dfir/incidents/[id]/status`
+      (`PATCH`), `dfir/incidents/[id]/assign` (`POST`/`DELETE`),
+      `dfir/incidents/[id]/links` (`POST`), `dfir/incidents/[id]/links/[linkId]`
+      (`DELETE`, `proxyToBackend()`'s `path` function receiving both `id` and `linkId` from
+      the two-level dynamic segment without any change to the helper itself — proof the
+      Phase 2 design handles nested dynamic routes for free).
+- [x] Tests: `dfir-routes.test.ts` (11, incl. the two-dynamic-segment unlink route),
+      `link-record-form.test.tsx` (2), `links-table.test.tsx` (4, incl. the detail page's
+      link/unlink flow and hiding Unlink for Viewer). 17 new tests. Full suite: 233 tests
+      (was 216), all green; `tsc --noEmit`, `eslint`, `prettier --check`, and `next build`
+      all clean (same one pre-existing, unrelated `eslint` finding, still untouched;
+      confirmed via the build's route table that both `/dfir` and `/dfir/[id]` registered
+      correctly).
+- [x] **All six security modules (VM, EDR, SIEM, CTI, SOAR, DFIR) now have real frontend
+      pages.** The `(dashboard)/[module]` stub and `src/lib/nav.ts`'s `isModuleSlug` guard
+      are now fully superseded — not deleted yet, that's Phase 12's explicit job (confirm
+      nothing else still needs them first), but every module's nav link resolves to a real
+      page now, not the placeholder.
 
 ## Phase 9, asset feed and dashboard integration
 
