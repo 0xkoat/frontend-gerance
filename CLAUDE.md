@@ -61,17 +61,18 @@ src/
   app/
     login/                                             — Figure 1 split-panel, NOT in (auth)
     (auth)/forgot-password, change-password             — public-ish, centered layout
-    (dashboard)/dashboard, users, tenants, vm, [module]  — sidebar layout, session-gated;
-                                                             vm/, vm/assets/ added Phase 3
-                                                             (2026-08-07), real VM module
+    (dashboard)/dashboard, users, tenants, vm, edr, [module] — sidebar layout, session-gated;
+                                                             vm/, vm/assets/ (Phase 3),
+                                                             edr/, edr/endpoints/ (Phase 4),
+                                                             both 2026-08-07, real module
                                                              pages; [module] still covers the
-                                                             other five, not built yet
+                                                             other four, not built yet
     api/auth/..., api/users/..., api/tenants/...         — Route Handlers (BFF proxy layer)
-    api/vm/**                                            — VM module routes (Phase 3,
-                                                             2026-08-07), all via
-                                                             proxyToBackend() (Phase 2); the
-                                                             other five modules' routes land
-                                                             in Phases 4-8, not built yet
+    api/vm/**, api/edr/**                                — VM (Phase 3) and EDR (Phase 4)
+                                                             module routes, both 2026-08-07,
+                                                             all via proxyToBackend() (Phase
+                                                             2); the other four modules' routes
+                                                             land in Phases 5-8, not built yet
     icon.tsx                                             — generated favicon (next/og)
     not-found.tsx, error.tsx, global-error.tsx, loading.tsx  — see error.md's `unstable_retry`
                                                                 note below; not-found.tsx
@@ -94,6 +95,10 @@ src/
     vm/          — VM module (Phase 3, 2026-08-07): asset create form/row actions, vuln/asset
                    tables, VulnerabilityStatusMenu (VM-specific — full status enum, not the
                    shared StatusTransitionMenu's restricted transition set)
+    edr/         — EDR module (Phase 4, 2026-08-07): endpoint row actions (edit/delete only,
+                   no create — no manual create route exists), detections/endpoints tables.
+                   Uses the shared StatusTransitionMenu directly (unlike VM) — EDR's status
+                   route really is restricted to ESCALATED/RESOLVED
   lib/
     session.ts    — cookie read/write, getSession()/requireSession() (server-only)
     jwt.ts        — pure JWT payload decode, shared by session.ts and proxy.ts (no
@@ -111,8 +116,9 @@ src/
                     security boundary — see the file's own doc comment)
     zod-errors.ts — fieldErrorsFromZod(): first-issue-per-field from a ZodError, used by
                     every form that shows inline field errors
-    validations/  — zod schemas mirrored from backend DTOs (now incl. validations/vm.ts and
-                    validations/security.ts's shared assignPayloadSchema)
+    validations/  — zod schemas mirrored from backend DTOs (now incl. validations/vm.ts,
+                    validations/edr.ts, and validations/security.ts's shared
+                    assignPayloadSchema)
     mock-data.ts, severity.ts, nav.ts
   types/
     auth.ts       — UserRole, SessionClaims — hand-matched to backend/src/generated/prisma
@@ -318,6 +324,17 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-08-07, tenth pass — Phase 4, EDR module): the second module
+page, following Phase 3's pattern closely — see Phase 4 of the adaptation plan for the full
+checklist. Two things worth remembering that VM didn't need: EDR's list filters are narrower
+than VM's (`EdrQueryDto` has no `status` field, only VM's does — the page's filter set
+matches that instead of copy-pasting VM's), and EDR's detection status route genuinely is
+restricted to `ESCALATED`/`RESOLVED`, so this module uses Phase 2's shared
+`StatusTransitionMenu` directly instead of a module-specific menu like VM's. No create form
+for endpoints (no manual create route exists, only `ingest()`'s upsert). Test suite grew
+from 164 to 179 tests; `tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all
+verified clean.
 
 **Recently completed** (2026-08-07, ninth pass — Phase 3, VM module): the first real
 security-module page, closing the single largest remaining gap called out below (see Phase 3
@@ -530,7 +547,7 @@ since 2026-08-06.
 
 ## Testing
 
-30 files / 164 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+32 files / 179 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
 matrix, every auth/user/tenant form's validation/success/error paths (incl.
 `RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
 `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
@@ -540,8 +557,9 @@ Route Handlers' cookie relay), Phase 2's shared foundation (`vm-assets-route.tes
 `query-filters.test.ts`, `next-only-pagination.test.tsx`, `assignment-control.test.tsx`,
 `status-transition-menu.test.tsx`, added 2026-08-07), Phase 3's VM module
 (`vm-routes.test.ts`, `create-asset-form.test.tsx`, `asset-row-actions.test.tsx`,
-`vulnerability-status-menu.test.tsx`, added 2026-08-07), and — the gap called out below in
-earlier passes — every
+`vulnerability-status-menu.test.tsx`, added 2026-08-07), Phase 4's EDR module
+(`edr-routes.test.ts`, `endpoint-row-actions.test.tsx`, added 2026-08-07), and — the gap
+called out below in earlier passes — every
 Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
 cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
 unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
@@ -952,20 +970,37 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       take precedence over the dynamic `[module]/` stub, as Next's own routing rules say they
       should — the stub itself is left in place for the other five modules, per Phase 12.
 
-## Phase 4, EDR module
+## Phase 4, EDR module — DONE 2026-08-07
 
-- [ ] `src/app/(dashboard)/edr/page.tsx`: detections list (severity, status, assignee,
-      endpoint hostname, MITRE techniques if present), same filter set as VM.
-- [ ] `src/app/(dashboard)/edr/endpoints/page.tsx` or a tab: endpoint list (hostname, ip, os,
-      status, last seen), edit, delete (blocked with `409` if it has detections, point at
-      `DECOMMISSIONED` as the alternative, matching the backend's own error message). No
-      create form, there is no manual create route, only `ingest()`'s upsert.
-- [ ] Row actions: assign, unassign, status change (`ESCALATED`/`RESOLVED` only, per
-      `TRANSITIONABLE_STATUSES`).
-- [ ] Zod schemas mirroring `UpdateEdrEndpointDto`, `UpdateEdrDetectionStatusDto`, the
-      shared `AssignDto`.
-- [ ] Route Handlers under `src/app/api/edr/**`.
-- [ ] Tests, same shape as Phase 3.
+- [x] `src/app/(dashboard)/edr/page.tsx`: detections list (severity, detection name +
+      description, MITRE techniques, resolved endpoint hostname, status, assignee).
+      **Filter set is narrower than VM's, not a copy-paste "same as VM"**: `EdrQueryDto`
+      (unlike `VmQueryDto`) adds only `endpointId` to the shared `BaseQueryDto`, no `status`
+      — so the page only offers severity + "assigned to me", matching what the backend
+      actually supports rather than building a status filter that would silently do nothing.
+- [x] `src/app/(dashboard)/edr/endpoints/page.tsx`: endpoint list (hostname, ip, os, status,
+      last seen), edit + delete only — **no create form**, confirmed no manual create route
+      exists (`EndpointRowActions`, no equivalent of VM's `CreateAssetForm`). Delete's `409`
+      (still has detections) surfaces the backend's own message as-is, which already names
+      `DECOMMISSIONED` as the alternative — nothing extra needed in the UI copy.
+- [x] Row actions: `AssignmentControl` (shared) for assign/unassign. Status change uses the
+      **shared `StatusTransitionMenu`** this time, unlike VM — `UpdateEdrDetectionStatusDto`
+      really is restricted to `ESCALATED`/`RESOLVED`
+      (`EDR_DETECTION_TRANSITIONABLE_STATUSES`), the exact shape that component was built
+      for.
+- [x] Zod schemas: `updateEdrEndpointSchema`, `updateEdrDetectionStatusSchema`
+      (`src/lib/validations/edr.ts`), reusing Phase 3's shared `assignPayloadSchema`.
+- [x] Route Handlers, all via `proxyToBackend()`: `edr/endpoints` (`GET` only — no `POST`),
+      `edr/endpoints/[id]` (`PATCH`/`DELETE`), `edr/detections` (`GET`),
+      `edr/detections/[id]/status` (`PATCH`), `edr/detections/[id]/assign`
+      (`POST`/`DELETE`).
+- [x] Tests: `edr-routes.test.ts` (11), `endpoint-row-actions.test.tsx` (4). 15 new tests.
+      Full suite: 179 tests (was 164), all green; `tsc --noEmit`, `eslint`,
+      `prettier --check`, and `next build` all clean (same one pre-existing, unrelated
+      `eslint` finding, still untouched). Confirmed via the build's route table that
+      `AssignmentControl`'s Admin-picker constraint from Phase 3 (`GET /users` being
+      Admin-only) applies identically here — same comment, same fetch-only-if-Admin guard,
+      not rediscovered from scratch.
 
 ## Phase 5, SIEM module
 
