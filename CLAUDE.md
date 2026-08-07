@@ -62,20 +62,23 @@ src/
     login/                                             — Figure 1 split-panel, NOT in (auth)
     (auth)/forgot-password, change-password             — public-ish, centered layout
     (dashboard)/dashboard, users, tenants, vm, edr, siem,
-      cti, [module]                                       — sidebar layout, session-gated;
+      cti, soar, [module]                                 — sidebar layout, session-gated;
                                                              vm/, vm/assets/ (Phase 3),
                                                              edr/, edr/endpoints/ (Phase 4),
                                                              siem/, siem/logs/ (Phase 5),
-                                                             cti/ (Phase 6), all 2026-08-07,
-                                                             real module pages; [module] still
-                                                             covers the other two, not built yet
+                                                             cti/ (Phase 6), soar/ (Phase 7),
+                                                             all 2026-08-07, real module
+                                                             pages; [module] still covers
+                                                             DFIR, not built yet
     api/auth/..., api/users/..., api/tenants/...         — Route Handlers (BFF proxy layer)
-    api/vm/**, api/edr/**, api/siem/**, api/cti/**       — VM (Phase 3), EDR (Phase 4), SIEM
-                                                             (Phase 5), CTI (Phase 6) module
-                                                             routes, all 2026-08-07, all via
-                                                             proxyToBackend() (Phase 2); the
-                                                             other two modules' routes land in
-                                                             Phases 7-8, not built yet
+    api/vm/**, api/edr/**, api/siem/**, api/cti/**,
+      api/soar/**                                         — VM (Phase 3), EDR (Phase 4), SIEM
+                                                             (Phase 5), CTI (Phase 6), SOAR
+                                                             (Phase 7) module routes, all
+                                                             2026-08-07, all via
+                                                             proxyToBackend() (Phase 2); DFIR's
+                                                             routes land in Phase 8, not built
+                                                             yet
     icon.tsx                                             — generated favicon (next/og)
     not-found.tsx, error.tsx, global-error.tsx, loading.tsx  — see error.md's `unstable_retry`
                                                                 note below; not-found.tsx
@@ -109,6 +112,10 @@ src/
                    confidence/source only — type/value are the IOC's identity, not
                    editable). No AssignmentControl/StatusTransitionMenu anywhere — CTI is the
                    one module with neither a status nor an assign route
+    soar/        — SOAR module (Phase 7, 2026-08-07): playbook create form/row actions
+                   (severity-only trigger picker, raw JSON actions textarea, isActive
+                   toggle), a read-only ExecutionsTable. Admin-only, unlike every other
+                   module's Admin-or-Analyst mutation routes
   lib/
     session.ts    — cookie read/write, getSession()/requireSession() (server-only)
     jwt.ts        — pure JWT payload decode, shared by session.ts and proxy.ts (no
@@ -127,8 +134,9 @@ src/
     zod-errors.ts — fieldErrorsFromZod(): first-issue-per-field from a ZodError, used by
                     every form that shows inline field errors
     validations/  — zod schemas mirrored from backend DTOs (now incl. validations/vm.ts,
-                    validations/edr.ts, validations/siem.ts, validations/cti.ts, and
-                    validations/security.ts's shared assignPayloadSchema)
+                    validations/edr.ts, validations/siem.ts, validations/cti.ts,
+                    validations/soar.ts, and validations/security.ts's shared
+                    assignPayloadSchema)
     mock-data.ts, severity.ts, nav.ts
   types/
     auth.ts       — UserRole, SessionClaims — hand-matched to backend/src/generated/prisma
@@ -334,6 +342,20 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-08-07, thirteenth pass — Phase 7, SOAR module): the fifth
+module page, and the first with genuinely different RBAC from every other module — SOAR's
+playbook mutation routes are `@Roles(ADMIN)` only, not the `ADMIN`/`ANALYST` pattern every
+other module uses, confirmed against the controller and reflected in a dedicated
+`requireAdmin` guard (not `requireAnalystOrAdmin`) plus an Analyst-gets-no-actions-column
+`PlaybooksTable`. `actions` stays a raw JSON textarea per the plan (SOAR execution is
+simulated, no real action schema exists to build a structured form against) — a real
+testing snag surfaced while covering it: `userEvent.type()`'s keyboard DSL treats `{`/`}`
+as special-sequence syntax, making raw JSON input unreliable to type correctly even with
+doubled-brace escaping, so `fireEvent.change()` was used to set the JSON textarea's value
+directly in those specific assertions. Executions are read-only for every role — confirmed
+no assign/status routes exist for `SoarExecution` at all. Test suite grew from 201 to 216
+tests; `tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all verified clean.
 
 **Recently completed** (2026-08-07, twelfth pass — Phase 6, CTI module): the fourth module
 page and the first one with real create/edit forms but no status or assign concept at all —
@@ -580,7 +602,7 @@ since 2026-08-06.
 
 ## Testing
 
-35 files / 201 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+38 files / 216 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
 matrix, every auth/user/tenant form's validation/success/error paths (incl.
 `RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
 `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
@@ -594,7 +616,9 @@ Route Handlers' cookie relay), Phase 2's shared foundation (`vm-assets-route.tes
 (`edr-routes.test.ts`, `endpoint-row-actions.test.tsx`, added 2026-08-07), Phase 5's SIEM
 module (`siem-routes.test.ts`, added 2026-08-07), Phase 6's CTI module
 (`cti-routes.test.ts`, `create-ioc-form.test.tsx`, `ioc-row-actions.test.tsx`, added
-2026-08-07), and — the gap called out below in earlier passes — every
+2026-08-07), Phase 7's SOAR module (`soar-routes.test.ts`, `create-playbook-form.test.tsx`,
+`playbook-row-actions.test.tsx`, added 2026-08-07), and — the gap called out below in
+earlier passes — every
 Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
 cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
 unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
@@ -1089,23 +1113,44 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       `tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all clean (same one
       pre-existing, unrelated `eslint` finding, still untouched).
 
-## Phase 7, SOAR module
+## Phase 7, SOAR module — DONE 2026-08-07
 
-- [ ] `src/app/(dashboard)/soar/page.tsx`: two sections, playbooks and executions.
-- [ ] Playbook CRUD, Admin only: create/edit with a severity-only `triggerCondition` picker
-      (matching `TriggerConditionDto`, a single `Severity` select, not a free-form JSON
-      editor, the backend does not accept anything richer today), an `actions` field that
-      stays a raw JSON textarea since the backend genuinely validates it as an open object
-      (SOAR execution is simulated, per the backend's own decision 8, there is no real
-      action schema to build a structured form against), `isActive` toggle, delete (blocked
-      with `409` if it has executions, point at the `isActive` toggle instead, matching the
-      backend's error message).
-- [ ] Executions list, read-only for every role, no assign/status actions exist for this
-      module by design (`SoarExecution` is already terminal by the time a human sees it).
-- [ ] Zod schemas mirroring `CreateSoarPlaybookDto` (including the nested
-      `TriggerConditionDto`), `UpdateSoarPlaybookDto`.
-- [ ] Route Handlers under `src/app/api/soar/**`.
-- [ ] Tests, same shape as Phase 3.
+- [x] `src/app/(dashboard)/soar/page.tsx`: two sections, playbooks and executions (the
+      latter paginated via `NextOnlyPagination`, the former unpaginated — `listPlaybooks`
+      takes no query params at all on the backend, same shape as VM's assets/EDR's
+      endpoints).
+- [x] Playbook CRUD, **Admin only** (not Admin-or-Analyst like every other module's
+      mutations — `SoarController`'s playbook routes are `@Roles(ADMIN)` specifically):
+      create/edit via `CreatePlaybookForm`/`PlaybookRowActions` with a severity-only
+      `triggerCondition` picker (a single `Severity` `<Select>`, matching
+      `TriggerConditionDto` exactly, not a free-form condition builder), an `actions` field
+      that's a raw JSON `<textarea>` (parsed client-side before zod validation; a
+      `JSON.parse` failure shows "Enter valid JSON" without ever reaching the schema),
+      `isActive` toggle (plain checkbox — no `Switch` primitive in this shadcn preset),
+      delete (409 surfaces the backend's own "deactivate it instead" message as-is).
+      Analyst/Viewer get `PlaybooksTable` with no actions column at all — not just a
+      disabled one.
+- [x] Executions list, read-only for every role — confirmed no assign/status routes exist
+      for `SoarExecution` in the controller, so no `AssignmentControl`/`StatusTransitionMenu`
+      anywhere in `ExecutionsTable` either, same as `LogsTable` in Phase 5.
+- [x] Zod schemas: `triggerConditionSchema`, `createSoarPlaybookSchema`,
+      `updateSoarPlaybookSchema` (`src/lib/validations/soar.ts`) — `actions` validated as
+      `z.record(z.string(), z.unknown())`, matching the backend's own unconstrained
+      `@IsObject()`.
+- [x] Route Handlers, all via `proxyToBackend()`: `soar/playbooks` (`GET`/`POST`, `POST`
+      guarded by `requireAdmin` not `requireAnalystOrAdmin`), `soar/playbooks/[id]`
+      (`PATCH`/`DELETE`, same Admin-only guard), `soar/executions` (`GET`).
+- [x] Tests: `soar-routes.test.ts` (8, including the Admin-only RBAC distinction vs. every
+      other module), `create-playbook-form.test.tsx` (3, incl. invalid-JSON handling),
+      `playbook-row-actions.test.tsx` (4, incl. pre-filling the JSON textarea and the
+      isActive checkbox, plus the same invalid-JSON path on edit). **Testing note:**
+      `userEvent.type()`'s keyboard DSL treats `{`/`}` as special-sequence delimiters, which
+      makes typing raw JSON into the actions textarea unreliable to escape correctly — used
+      `fireEvent.change()` to set the textarea's value directly in those specific
+      assertions instead, keeping `userEvent` for every other interaction in the same
+      tests. 15 new tests. Full suite: 216 tests (was 201), all green; `tsc --noEmit`,
+      `eslint`, `prettier --check`, and `next build` all clean (same one pre-existing,
+      unrelated `eslint` finding, still untouched).
 
 ## Phase 8, DFIR module
 
