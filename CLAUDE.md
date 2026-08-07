@@ -62,20 +62,20 @@ src/
     login/                                             — Figure 1 split-panel, NOT in (auth)
     (auth)/forgot-password, change-password             — public-ish, centered layout
     (dashboard)/dashboard, users, tenants, vm, edr, siem,
-      [module]                                            — sidebar layout, session-gated;
+      cti, [module]                                       — sidebar layout, session-gated;
                                                              vm/, vm/assets/ (Phase 3),
                                                              edr/, edr/endpoints/ (Phase 4),
-                                                             siem/, siem/logs/ (Phase 5), all
-                                                             2026-08-07, real module pages;
-                                                             [module] still covers the other
-                                                             three, not built yet
+                                                             siem/, siem/logs/ (Phase 5),
+                                                             cti/ (Phase 6), all 2026-08-07,
+                                                             real module pages; [module] still
+                                                             covers the other two, not built yet
     api/auth/..., api/users/..., api/tenants/...         — Route Handlers (BFF proxy layer)
-    api/vm/**, api/edr/**, api/siem/**                   — VM (Phase 3), EDR (Phase 4), SIEM
-                                                             (Phase 5) module routes, all
-                                                             2026-08-07, all via
+    api/vm/**, api/edr/**, api/siem/**, api/cti/**       — VM (Phase 3), EDR (Phase 4), SIEM
+                                                             (Phase 5), CTI (Phase 6) module
+                                                             routes, all 2026-08-07, all via
                                                              proxyToBackend() (Phase 2); the
-                                                             other three modules' routes land
-                                                             in Phases 6-8, not built yet
+                                                             other two modules' routes land in
+                                                             Phases 7-8, not built yet
     icon.tsx                                             — generated favicon (next/og)
     not-found.tsx, error.tsx, global-error.tsx, loading.tsx  — see error.md's `unstable_retry`
                                                                 note below; not-found.tsx
@@ -105,6 +105,10 @@ src/
     siem/        — SIEM module (Phase 5, 2026-08-07): alerts table (shared AssignmentControl
                    + StatusTransitionMenu, same restricted shape as EDR's), a read-only
                    LogsTable (no row actions — no PATCH/DELETE route exists for SiemLog)
+    cti/         — CTI module (Phase 6, 2026-08-07): create IOC form, row actions (edit
+                   confidence/source only — type/value are the IOC's identity, not
+                   editable). No AssignmentControl/StatusTransitionMenu anywhere — CTI is the
+                   one module with neither a status nor an assign route
   lib/
     session.ts    — cookie read/write, getSession()/requireSession() (server-only)
     jwt.ts        — pure JWT payload decode, shared by session.ts and proxy.ts (no
@@ -123,8 +127,8 @@ src/
     zod-errors.ts — fieldErrorsFromZod(): first-issue-per-field from a ZodError, used by
                     every form that shows inline field errors
     validations/  — zod schemas mirrored from backend DTOs (now incl. validations/vm.ts,
-                    validations/edr.ts, validations/siem.ts, and validations/security.ts's
-                    shared assignPayloadSchema)
+                    validations/edr.ts, validations/siem.ts, validations/cti.ts, and
+                    validations/security.ts's shared assignPayloadSchema)
     mock-data.ts, severity.ts, nav.ts
   types/
     auth.ts       — UserRole, SessionClaims — hand-matched to backend/src/generated/prisma
@@ -330,6 +334,17 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-08-07, twelfth pass — Phase 6, CTI module): the fourth module
+page and the first one with real create/edit forms but no status or assign concept at all —
+confirmed CTI has neither a status route nor an assign route, so this is the first module
+page with no `AssignmentControl`/`StatusTransitionMenu` anywhere in it. `IocRowActions`'
+edit dialog deliberately has no type/value fields, matching `UpdateCtiIocDto`'s own "these
+are the IOC's identity" comment — those two fields are set once at creation and never
+touched again short of delete-and-recreate. The date-range filter uses a plain
+`<input type="date">` submitting `YYYY-MM-DD`, which the backend's `@Type(() => Date)`
+parses without needing a full client-built ISO timestamp. Test suite grew from 188 to 201
+tests; `tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all verified clean.
 
 **Recently completed** (2026-08-07, eleventh pass — Phase 5, SIEM module): the third module
 page — real alerts list, replacing what the mock dashboard alerts table was standing in
@@ -565,7 +580,7 @@ since 2026-08-06.
 
 ## Testing
 
-33 files / 188 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+35 files / 201 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
 matrix, every auth/user/tenant form's validation/success/error paths (incl.
 `RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
 `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
@@ -577,8 +592,9 @@ Route Handlers' cookie relay), Phase 2's shared foundation (`vm-assets-route.tes
 (`vm-routes.test.ts`, `create-asset-form.test.tsx`, `asset-row-actions.test.tsx`,
 `vulnerability-status-menu.test.tsx`, added 2026-08-07), Phase 4's EDR module
 (`edr-routes.test.ts`, `endpoint-row-actions.test.tsx`, added 2026-08-07), Phase 5's SIEM
-module (`siem-routes.test.ts`, added 2026-08-07), and — the gap called out below in
-earlier passes — every
+module (`siem-routes.test.ts`, added 2026-08-07), Phase 6's CTI module
+(`cti-routes.test.ts`, `create-ioc-form.test.tsx`, `ioc-row-actions.test.tsx`, added
+2026-08-07), and — the gap called out below in earlier passes — every
 Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
 cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
 unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
@@ -1049,15 +1065,29 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       and `next build` all clean (same one pre-existing, unrelated `eslint` finding, still
       untouched).
 
-## Phase 6, CTI module
+## Phase 6, CTI module — DONE 2026-08-07
 
-- [ ] `src/app/(dashboard)/cti/page.tsx`: IOC list (type, value, confidence, source), filter
-      by type plus the shared date range.
-- [ ] Create (Admin, Analyst), edit confidence/source only (type and value are the IOC's
-      identity per `UpdateCtiIocDto`'s own comment, not editable), delete.
-- [ ] Zod schemas mirroring `CreateCtiIocDto`, `UpdateCtiIocDto`.
-- [ ] Route Handlers under `src/app/api/cti/**`.
-- [ ] Tests, same shape as Phase 3.
+- [x] `src/app/(dashboard)/cti/page.tsx`: IOC list (type, value, confidence, source), filter
+      by type plus the shared date range (native `<input type="date">`, submitted as
+      `YYYY-MM-DD` — the backend's `@Type(() => Date)` parses that fine, no need to build a
+      full ISO timestamp client-side), `NextOnlyPagination`. **No severity/assignedToUserId
+      filters** — confirmed `CtiIoc` has neither field, and `CtiService.query()` silently
+      ignores those two inherited `BaseQueryDto` fields when present, so the page never
+      sends them (documented in the Route Handler's own comment, not just assumed).
+- [x] Create (Admin, Analyst) via `CreateIocForm`; `IocRowActions` edits confidence/source
+      only — no type/value fields in the dialog at all, matching `UpdateCtiIocDto`'s own
+      "these together are the IOC's identity" comment; delete.
+- [x] Zod schemas: `createCtiIocSchema`, `updateCtiIocSchema` (`src/lib/validations/cti.ts`).
+- [x] Route Handlers, all via `proxyToBackend()`: `cti/iocs` (`GET`/`POST`), `cti/iocs/[id]`
+      (`PATCH`/`DELETE`).
+- [x] **CTI is the one module with neither a status route nor an assign route** — no
+      `AssignmentControl`, no `StatusTransitionMenu` anywhere in this module, confirmed
+      against the controller rather than assumed from the other modules' shape.
+- [x] Tests: `cti-routes.test.ts` (7), `create-ioc-form.test.tsx` (2),
+      `ioc-row-actions.test.tsx` (4, including a check that the edit dialog has no
+      type/value fields at all). 13 new tests. Full suite: 201 tests (was 188), all green;
+      `tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all clean (same one
+      pre-existing, unrelated `eslint` finding, still untouched).
 
 ## Phase 7, SOAR module
 
