@@ -5,10 +5,19 @@ import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import { UserRole } from "@/types/auth";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { SeverityBreakdown } from "@/components/dashboard/severity-breakdown";
-import { TopAttackSources } from "@/components/dashboard/top-attack-sources";
-import { AlertsTable } from "@/components/dashboard/alerts-table";
-import { mockKpis, mockAlerts } from "@/lib/mock-data";
+import { EventsByModule } from "@/components/dashboard/events-by-module";
+import { FeedTable } from "@/components/assets/feed-table";
+import { isOpenFeedEntry } from "@/lib/asset-feed";
 import type { TenantSummary } from "@/components/tenants/tenants-table";
+import type { AssetFeedEntry } from "@/types/assets";
+
+// The largest page size GET /assets/feed accepts (BaseQueryDto's @Max(100)) — see
+// TenantOverview's own comment for why this snapshot, not a true tenant-wide total, is what
+// backs every number below.
+const FEED_SNAPSHOT_SIZE = 100;
+// How many of the snapshot's rows the "recent activity" table actually lists — the
+// breakdown panels use the full snapshot, the table itself doesn't need 100 rows visible.
+const RECENT_ACTIVITY_ROWS = 8;
 
 export default async function DashboardPage() {
   const session = await requireSession();
@@ -17,7 +26,7 @@ export default async function DashboardPage() {
     return <SuperAdminOverview />;
   }
 
-  return <TenantOverview />;
+  return <TenantOverview userId={session.userId} />;
 }
 
 // Super Admin isn't bound to a tenant (tenantId is always null — see root CLAUDE.md's API
@@ -75,7 +84,32 @@ async function SuperAdminOverview() {
   );
 }
 
-function TenantOverview() {
+// Real data since Phase 9 (2026-08-07), sourced entirely from GET /assets/feed — the four
+// KPIs, both breakdown panels, and the recent-activity table below all derive from one
+// fetch of the most recent FEED_SNAPSHOT_SIZE events, not a true tenant-wide aggregate.
+// That's a deliberate, documented limit (CLAUDE.md's adaptation plan, decision 10): none of
+// the six modules' query() methods or getUnifiedFeed itself return a total count (see
+// CLAUDE.md's "Known gaps"), so an honest dashboard can only describe what it actually
+// fetched, not claim a full history it can't verify. The four KPIs this replaces the old
+// mock ones with were chosen because they're the only ones actually answerable from this
+// shape: "resolved today" (the original mock's fourth KPI) has no honest replacement at
+// all — AssetFeedEntry has no resolved-at/updated-at timestamp, only `timestamp` (the
+// record's *creation* time, never touched again on a status change, see
+// backend/src/asset/asset.service.ts's applyStatusChange) — so it's dropped rather than
+// faked, not silently kept.
+async function TenantOverview({ userId }: { userId: string }) {
+  const res = await backendFetchAuthedNoRefresh(
+    `/assets/feed?pageSize=${FEED_SNAPSHOT_SIZE}`,
+  );
+  const entries: AssetFeedEntry[] = res.ok ? await res.json() : [];
+
+  const criticalCount = entries.filter((e) => e.severity === "CRITICAL").length;
+  const highCount = entries.filter((e) => e.severity === "HIGH").length;
+  const openCount = entries.filter(isOpenFeedEntry).length;
+  const assignedToMeCount = entries.filter(
+    (e) => e.assignedToUserId === userId,
+  ).length;
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -83,43 +117,44 @@ function TenantOverview() {
           Security Overview
         </h1>
         <p className="text-sm text-muted-foreground">
-          Illustrative data — the SIEM module isn&apos;t implemented on the
-          backend yet.
+          Based on the {entries.length} most recent event
+          {entries.length === 1 ? "" : "s"} across SIEM, EDR, VM, CTI, SOAR, and
+          DFIR —{" "}
+          <Link href="/assets" className="underline underline-offset-4">
+            see the full feed
+          </Link>
+          .
         </p>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
-          label="Critical alerts"
-          value={mockKpis.criticalAlerts}
+          label="Critical events"
+          value={criticalCount}
           tone="critical"
         />
-        <KpiCard
-          label="High alerts"
-          value={mockKpis.highAlerts}
-          tone="warning"
-        />
-        <KpiCard label="Open incidents" value={mockKpis.openIncidents} />
-        <KpiCard
-          label="Resolved today"
-          value={mockKpis.resolvedToday}
-          tone="good"
-        />
+        <KpiCard label="High severity" value={highCount} tone="warning" />
+        <KpiCard label="Open records" value={openCount} />
+        <KpiCard label="Assigned to me" value={assignedToMeCount} tone="good" />
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <TopAttackSources />
-        <SeverityBreakdown />
+        <EventsByModule entries={entries} />
+        <SeverityBreakdown entries={entries} />
       </div>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Recent alerts — latest activity across all sources
+            Recent activity — latest events across all modules
           </CardTitle>
         </CardHeader>
         <CardContent className="px-0">
-          <AlertsTable alerts={mockAlerts} />
+          <FeedTable
+            entries={entries.slice(0, RECENT_ACTIVITY_ROWS)}
+            currentUserId={userId}
+            userNameById={{}}
+          />
         </CardContent>
       </Card>
     </div>

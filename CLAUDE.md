@@ -62,21 +62,25 @@ src/
     login/                                             — Figure 1 split-panel, NOT in (auth)
     (auth)/forgot-password, change-password             — public-ish, centered layout
     (dashboard)/dashboard, users, tenants, vm, edr, siem,
-      cti, soar, dfir, [module]                           — sidebar layout, session-gated;
+      cti, soar, dfir, assets, [module]                    — sidebar layout, session-gated;
                                                              vm/, vm/assets/ (Phase 3),
                                                              edr/, edr/endpoints/ (Phase 4),
                                                              siem/, siem/logs/ (Phase 5),
                                                              cti/ (Phase 6), soar/ (Phase 7),
                                                              dfir/, dfir/[id]/ (Phase 8), all
                                                              2026-08-07 — all six modules now
-                                                             have real pages; [module] is
-                                                             unreachable for any slug now but
-                                                             not yet deleted (Phase 12's job)
+                                                             have real pages; assets/ (Phase
+                                                             9, 2026-08-07) — the unified
+                                                             GET /assets/feed view; [module]
+                                                             is unreachable for any slug now
+                                                             but not yet deleted (Phase 12's
+                                                             job)
     api/auth/..., api/users/..., api/tenants/...         — Route Handlers (BFF proxy layer)
     api/vm/**, api/edr/**, api/siem/**, api/cti/**,
-      api/soar/**, api/dfir/**                            — all six modules' routes, all
+      api/soar/**, api/dfir/**, api/assets/feed            — all six modules' routes, all
                                                              2026-08-07, all via
-                                                             proxyToBackend() (Phase 2)
+                                                             proxyToBackend() (Phase 2);
+                                                             api/assets/feed added Phase 9
     icon.tsx                                             — generated favicon (next/og)
     not-found.tsx, error.tsx, global-error.tsx, loading.tsx  — see error.md's `unstable_retry`
                                                                 note below; not-found.tsx
@@ -88,7 +92,14 @@ src/
   components/
     ui/          — shadcn-generated, don't hand-edit the primitives casually
     auth/        — login/forgot-password/change-password forms
-    dashboard/   — sidebar nav, KPI cards, severity/attack-source visuals, alerts table
+    dashboard/   — sidebar nav, KPI cards, severity + events-by-module breakdown panels,
+                   recent-activity table (all real GET /assets/feed data since Phase 9,
+                   2026-08-07 — events-by-module.tsx replaced the old mock "top attack
+                   sources" panel, no module stores a structured source-IP field to
+                   honestly aggregate one; the old alerts-table.tsx is gone, the dashboard
+                   now reuses components/assets/feed-table.tsx instead)
+    assets/      — FeedTable (Phase 9, 2026-08-07): the read-only cross-module row shown on
+                   both (dashboard)/assets and the dashboard's own "recent activity" panel
     users/       — Admin user list, create-user form, UserRowActions (edit/role/reset/delete
                    dropdown + dialogs)
     tenants/     — Super Admin tenant list, create form, delete-confirm button
@@ -138,7 +149,12 @@ src/
                     validations/edr.ts, validations/siem.ts, validations/cti.ts,
                     validations/soar.ts, validations/dfir.ts, and
                     validations/security.ts's shared assignPayloadSchema)
-    mock-data.ts, severity.ts, nav.ts
+    asset-feed.ts — isOpenFeedEntry() (source-aware terminal-status check, added Phase 9,
+                    2026-08-07) and hrefForFeedEntry() (DFIR gets a real per-record deep
+                    link, every other source links to its module's list page)
+    severity.ts, nav.ts  — mock-data.ts deleted Phase 9 (2026-08-07), its last consumers
+                    (the dashboard's severity/attack-source panels and alerts table) were
+                    all replaced with real data in the same pass
   types/
     auth.ts       — UserRole, SessionClaims — hand-matched to backend/src/generated/prisma
     security.ts, vm.ts, edr.ts, siem.ts, cti.ts, soar.ts, dfir.ts, assets.ts — added Phase 2
@@ -300,13 +316,13 @@ swapping the cookie strategy.
   wire up `GET`/`POST /tenants`, and the dashboard's `SuperAdminOverview` pulls the same
   real list instead of mock data. Tenant _deletion_ — `DELETE /tenants/:id` exists on the
   backend — has no UI yet.)
-- **Dashboard content is mock data** (`src/lib/mock-data.ts`). This was accurate when
-  written, but as of 2026-08-06 **all six modules (SIEM, SOAR, CTI, EDR, DFIR, VM) plus an
-  asset aggregator and an SSE event stream are fully built on the backend** (see
-  `backend/CLAUDE.md`'s module implementation plan, all phases checked). Nothing on the
-  frontend has been adapted to consume them yet. `mock-data.ts`, the `[module]/page.tsx`
-  stub, and this bullet are all now stale in the same way. Full replacement plan is in the
-  adaptation plan further down this file, do not silently keep extending `mock-data.ts`.
+- ~~**Dashboard content is mock data**~~ **No longer true, this bullet is stale.** Fixed in
+  Phase 9 (2026-08-07, see the adaptation plan below) — the dashboard's KPIs, both
+  breakdown panels, and its recent-activity table are all real `GET /assets/feed` data now,
+  and `src/lib/mock-data.ts` itself has been deleted. Left struck through rather than
+  removed so the drift is visible, matching this file's own existing convention (see the
+  "Admin can list/create users..." bullet further down). The `[module]/page.tsx` stub is
+  still stale in the way this bullet used to describe — that's Phase 12's job, unchanged.
 - **No row-level actions on the alerts table** (assign/escalate/resolve) — intentionally
   not faked with disabled buttons. See the adaptation plan below, this is now buildable for
   real (SIEM's assign/status routes exist), no longer blocked on a missing backend module.
@@ -343,6 +359,32 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-08-07, fifteenth pass — Phase 9, asset feed and dashboard
+integration): the last mock data in the app is gone. A new `(dashboard)/assets` page (`GET
+/assets/feed`, severity/assignedToMe/date-range filters, `NextOnlyPagination`) and a shared
+`FeedTable` component (`src/components/assets/`) that both that page and the dashboard's
+"recent activity" panel now render. The dashboard's four KPIs, severity breakdown, and
+second breakdown panel are all real now too — a genuine design pass (decision 10), not a
+find-and-replace: **Critical events**/**High severity**/**Open records** (new
+`isOpenFeedEntry()` helper, source-aware since each module's terminal status values differ)
+/**Assigned to me** replace the old mock KPIs, all counted over one `GET /assets/feed?
+pageSize=100` snapshot with the dashboard's own copy saying exactly that ("based on the N
+most recent events") rather than implying a full history no endpoint here can back (see
+"Known gaps" — no module's query returns a total count). Two real findings made during the
+design pass, neither anticipated in the original plan text: (1) the mock's fourth KPI,
+"resolved today", turned out to have **no honest replacement at all** —
+`AssetFeedEntry.timestamp` is the record's creation time, never updated on a status change
+(confirmed against `backend/src/asset/asset.service.ts`'s `applyStatusChange`), so there's
+no way to answer "resolved today" without a backend schema change; dropped rather than
+faked, replaced with "Assigned to me". (2) confirmed via a full read of the relevant Prisma
+models that `mockTopAttackSources` never had a real backend equivalent (no module stores a
+structured attacker-IP field) — dropped and replaced with a new `EventsByModule` panel
+(event volume by source module, real data, same visual). `src/lib/mock-data.ts` is fully
+deleted — Phase 9 was its last consumer. Test suite grew from 233 to 243 tests
+(`assets-feed-route.test.ts`, `asset-feed-lib.test.ts`); `tsc --noEmit`, `eslint`,
+`prettier --check`, and `next build` all verified clean, `/assets` and `/api/assets/feed`
+both confirmed in the build's route table.
 
 **Recently completed** (2026-08-07, fourteenth pass — Phase 8, DFIR module, closing out all
 six security modules): the sixth and last module page, and the one with real structural
@@ -615,19 +657,21 @@ own entry in the adaptation plan below for what shipped and what was found along
 via the shared `proxyToBackend()`), and real types under `src/`. `(dashboard)/[module]/
 page.tsx` is now unreachable for all six slugs in practice (every one resolves to its own
 real folder first) but not yet deleted — that's Phase 12's explicit job, along with
-`src/lib/nav.ts`'s now-redundant `isModuleSlug` guard. **What's still not wired to real
-data: the asset aggregator (`GET /assets/feed`) and the SSE event stream (`GET
-/events/stream`)** — those are Phases 9-10 below, along with replacing
-`src/lib/mock-data.ts`'s still-fake dashboard content. Full phased plan, decisions, and
-verified API contract are in the dedicated section below, "Backend to frontend adaptation
-plan (2026-08-06)". Do not re-derive the backend route list by hand when picking up Phase 9
+`src/lib/nav.ts`'s now-redundant `isModuleSlug` guard. **The asset aggregator (`GET
+/assets/feed`) is wired to real data too, as of Phase 9 (2026-08-07)** —
+`(dashboard)/assets` (the full paginated/filterable feed) and the dashboard's own
+KPIs/breakdown panels/recent-activity table all consume it now; `src/lib/mock-data.ts` is
+deleted. **What's still not wired to real data: the SSE event stream (`GET
+/events/stream`)** — that's Phase 10 below. Full phased plan, decisions, and verified API
+contract are in the dedicated section below, "Backend to frontend adaptation plan
+(2026-08-06)". Do not re-derive the backend route list by hand when picking up Phase 10
 onward, the plan already has it verified against the actual controller source, re-verify
 only if the backend has changed since 2026-08-06 (or 2026-08-07's hardening note, already
 folded in).
 
 ## Testing
 
-41 files / 233 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+42 files / 243 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
 matrix, every auth/user/tenant form's validation/success/error paths (incl.
 `RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
 `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
@@ -644,8 +688,13 @@ module (`siem-routes.test.ts`, added 2026-08-07), Phase 6's CTI module
 2026-08-07), Phase 7's SOAR module (`soar-routes.test.ts`, `create-playbook-form.test.tsx`,
 `playbook-row-actions.test.tsx`, added 2026-08-07), Phase 8's DFIR module
 (`dfir-routes.test.ts`, `link-record-form.test.tsx`, `links-table.test.tsx`, added
-2026-08-07 — closing out all six modules), and — the gap called out below in earlier passes
-— every
+2026-08-07 — closing out all six modules), Phase 9's asset feed integration
+(`assets-feed-route.test.ts`, `asset-feed-lib.test.ts`, added 2026-08-07 — the new Route
+Handler's auth/RBAC/filter-forwarding/error-normalization paths, plus `isOpenFeedEntry()`'s
+per-source terminal-status logic and `hrefForFeedEntry()`'s DFIR-vs-everything-else mapping;
+no dedicated component test for `FeedTable`/`EventsByModule`/`SeverityBreakdown`, same
+"read-only composition, no interactive logic of its own" precedent as Phase 5's
+`AlertsTable`/`LogsTable`), and — the gap called out below in earlier passes — every
 Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
 cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
 unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
@@ -1219,22 +1268,72 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       nothing else still needs them first), but every module's nav link resolves to a real
       page now, not the placeholder.
 
-## Phase 9, asset feed and dashboard integration
+## Phase 9, asset feed and dashboard integration — DONE 2026-08-07
 
-- [ ] `src/app/(dashboard)/assets/page.tsx` (or fold into the existing dashboard, decide
-      explicitly rather than defaulting to one without considering the other): `GET
-      /assets/feed` list with severity/assignedToUserId/date filters and "Next" pagination,
-      each row showing its source module (badge), type, severity, status, assignee, and
-      deep-linking to that record's owning module page.
-- [ ] Replace `src/lib/mock-data.ts`'s severity breakdown and alerts table with data derived
-      from real module queries or the feed, per decision 5's casing change.
-- [ ] Replace the four mock KPI numbers per decision 10 above, this needs its own small
-      design pass (which endpoint or combination of endpoints backs each number), not a
-      find-and-replace.
-- [ ] Decide whether `mockTopAttackSources` has any real backend equivalent at all today (a
-      quick read of the schema suggests no module currently stores a structured "source IP"
-      field consistently enough to aggregate one), if not, either drop that dashboard panel
-      or leave it clearly marked as illustrative rather than presenting mock numbers as real.
+- [x] `src/app/(dashboard)/assets/page.tsx` — decided explicitly (not defaulted): build a
+      dedicated page, not a fold-into-dashboard. Every other module already gets its own
+      list page with full filters/pagination, and the feed genuinely needs that (severity,
+      "assigned to me", date range, `NextOnlyPagination`) — folding it into the dashboard
+      would mean either a second, less-capable feed view or losing the dashboard's own
+      compact "recent activity" glance. Instead the dashboard's "Recent activity" panel
+      reuses the same `FeedTable` component with a small unpaginated slice
+      (`RECENT_ACTIVITY_ROWS = 8`) of the same fetch, so both places share one real
+      component instead of diverging. Each row shows severity, summary/type, source module
+      (badge), status (raw per-source string), assignee, and a deep link — real DFIR rows
+      link to their actual detail page (`/dfir/:id`, the one module with one, decision 8);
+      everywhere else links to the owning module's list page, since no other module has a
+      per-record route to link to (documented in `src/lib/asset-feed.ts`'s own comment, not
+      invented past what the backend supports). New nav entry: "Asset Feed" under PLATFORM,
+      tenant-scoped roles only (Super Admin has no `tenantId`, and `requireTenantId()` on
+      the backend would 403 them the same way it already does elsewhere).
+- [x] Replaced the old `src/lib/mock-data.ts`-backed severity breakdown and alerts table
+      with real `GET /assets/feed` data — `SeverityBreakdown` and the dashboard's
+      "Recent activity" `FeedTable` both now take real `AssetFeedEntry[]` as a prop.
+      `mock-data.ts` itself is now fully deleted (2026-08-07) — Phase 9 was its last
+      consumer, and CLAUDE.md had repeatedly warned not to keep extending it; once nothing
+      used it, deleting it beat leaving a dead file around per the "don't let this drift"
+      discipline this file has followed all along.
+- [x] Replaced the four mock KPIs with a real design pass (decision 10), not a
+      find-and-replace: **Critical events**, **High severity**, **Open records** (a new
+      `isOpenFeedEntry()` helper in `src/lib/asset-feed.ts`, source-aware since each
+      module's terminal status values differ — VM: `REMEDIATED`/`ACCEPTED_RISK`, DFIR:
+      `CONTAINED`/`RESOLVED`, EDR/SIEM: `RESOLVED`; CTI/SOAR never set a `status` on their
+      feed rows at all and are excluded rather than miscounted), and **Assigned to me**
+      (replacing the old mock's "Resolved today", see below for why). All four are counted
+      over one `GET /assets/feed?pageSize=100` fetch (the backend's own `@Max(100)` ceiling)
+      — a snapshot of the most recent 100 events, not a true tenant-wide total (no module's
+      `query()`/`getUnifiedFeed` returns a count, see "Known gaps"). The dashboard's own
+      copy says exactly that ("Based on the N most recent events...") rather than implying
+      a full history.
+- [x] **Real finding made while doing this design pass, not anticipated in the original
+      plan text:** the mock's fourth KPI, "Resolved today", has **no honest replacement at
+      all** — `AssetFeedEntry` has no resolved-at/updated-at timestamp, only `timestamp`
+      (the record's *creation* time, set once and never touched again on a status change —
+      confirmed directly against `backend/src/asset/asset.service.ts`'s `applyStatusChange`,
+      which updates `status` but not `timestamp`). There is no way to answer "resolved
+      today" from this schema without a backend change. Dropped rather than faked or
+      silently kept, and replaced with "Assigned to me" — a KPI that *is* honestly
+      answerable from the fetched page and useful to the viewing analyst.
+- [x] `mockTopAttackSources` — confirmed via a full read of the relevant Prisma models
+      (`SiemLog`, `SiemAlert`, `EdrDetection`, `VmVulnerability`) that no module stores a
+      structured attacker-source-IP field consistently enough to aggregate one
+      (`SiemLog.source` is a free-text log-source name, not an attacker IP; the rest keep
+      any IP-shaped data inside opaque `rawData` JSON). Dropped the panel rather than mark
+      it illustrative — replaced with a new `EventsByModule` panel (same bar-list visual,
+      real data: event volume by source module from the same feed fetch), so the dashboard
+      keeps two real breakdown panels instead of one real and one fake-labeled-as-real.
+- [x] Tests: `__tests__/assets-feed-route.test.ts` (4, the new Route Handler's
+      auth/RBAC/filter-forwarding/error-normalization paths) and
+      `__tests__/asset-feed-lib.test.ts` (6, `isOpenFeedEntry`'s per-source terminal-status
+      logic and `hrefForFeedEntry`'s DFIR-vs-everything-else mapping). No dedicated
+      component test file for `FeedTable`/`EventsByModule`/`SeverityBreakdown` — same
+      precedent as Phase 5's `AlertsTable`/`LogsTable`: these are read-only, presentational
+      compositions with no interactive logic of their own, and none of the six modules'
+      list-only tables got a dedicated file either. 10 new tests. Full suite: 243 tests (was
+      233), all green; `tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all
+      clean (same one pre-existing, unrelated `eslint` finding in `user-row-actions.tsx`,
+      still untouched). Confirmed via the build's route table that `/assets` and
+      `/api/assets/feed` both registered correctly.
 
 ## Phase 10, real-time delivery (SSE)
 

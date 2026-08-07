@@ -5,11 +5,11 @@ import type { Severity } from "@/types/security";
 // light and dark chart surfaces. Severity is an ordered state, exactly what that palette
 // is for; picking ad-hoc reds/oranges here would've needed its own CVD validation pass.
 //
-// Keyed by the real backend Severity enum (uppercase) since 2026-08-07's Phase 2 pass —
-// was keyed by src/lib/mock-data.ts's lowercase mock type before that. mock-data.ts's own
-// Severity values were uppercased to match at the same time so its two remaining consumers
-// (AlertsTable, SeverityBreakdown) keep compiling until Phase 9 replaces them with real data
-// — see CLAUDE.md's adaptation plan, decision 5.
+// Keyed by the real backend Severity enum (uppercase) since 2026-08-07's Phase 2 pass — was
+// keyed by the now-deleted src/lib/mock-data.ts's lowercase mock type before that. Phase 9
+// (2026-08-07) replaced every remaining mock-data.ts consumer (the dashboard's alerts table,
+// severity breakdown, KPIs, and "top attack sources") with real GET /assets/feed data — see
+// CLAUDE.md's adaptation plan, decision 5, and Phase 9's own checklist.
 export const SEVERITY_COLOR: Record<Severity, string> = {
   LOW: "#0ca30c",
   MEDIUM: "#fab219",

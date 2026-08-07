@@ -9,6 +9,7 @@ import {
   Building2,
   LogOut,
   Settings,
+  Rss,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -67,6 +68,12 @@ export function SidebarNav({
             <LayoutDashboard className="size-4" />
             Dashboard
           </NavLink>
+          {isTenantScoped && (
+            <NavLink href="/assets" active={pathname === "/assets"}>
+              <Rss className="size-4" />
+              Asset Feed
+            </NavLink>
+          )}
           {role === UserRole.ADMIN && (
             <NavLink
               href="/users"
