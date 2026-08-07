@@ -16,3 +16,10 @@ export const updateVmAssetSchema = z.object({
     .optional(),
   type: z.string().min(1, "Type is required").optional(),
 });
+
+// Mirrors backend/src/vm/dto/updateVulnerabilityStatus.dto.ts — the full
+// VmVulnerabilitiesStatus enum, not a restricted transition subset (unlike SIEM/EDR/DFIR's
+// status DTOs), which is why VM doesn't use the shared StatusTransitionMenu component.
+export const updateVulnerabilityStatusSchema = z.object({
+  status: z.enum(["OPEN", "REMEDIATED", "ACCEPTED_RISK"]),
+});

@@ -61,10 +61,15 @@ src/
   app/
     login/                                             — Figure 1 split-panel, NOT in (auth)
     (auth)/forgot-password, change-password             — public-ish, centered layout
-    (dashboard)/dashboard, users, tenants, [module]      — sidebar layout, session-gated
+    (dashboard)/dashboard, users, tenants, vm, [module]  — sidebar layout, session-gated;
+                                                             vm/, vm/assets/ added Phase 3
+                                                             (2026-08-07), real VM module
+                                                             pages; [module] still covers the
+                                                             other five, not built yet
     api/auth/..., api/users/..., api/tenants/...         — Route Handlers (BFF proxy layer)
-    api/vm/assets/                                       — first proxyToBackend()-backed
-                                                             route, see Phase 2 below; the
+    api/vm/**                                            — VM module routes (Phase 3,
+                                                             2026-08-07), all via
+                                                             proxyToBackend() (Phase 2); the
                                                              other five modules' routes land
                                                              in Phases 4-8, not built yet
     icon.tsx                                             — generated favicon (next/og)
@@ -86,6 +91,9 @@ src/
                    NextOnlyPagination, AssignmentControl, StatusTransitionMenu — every
                    module page in Phases 3-8 reuses these instead of rebuilding row actions
                    per module
+    vm/          — VM module (Phase 3, 2026-08-07): asset create form/row actions, vuln/asset
+                   tables, VulnerabilityStatusMenu (VM-specific — full status enum, not the
+                   shared StatusTransitionMenu's restricted transition set)
   lib/
     session.ts    — cookie read/write, getSession()/requireSession() (server-only)
     jwt.ts        — pure JWT payload decode, shared by session.ts and proxy.ts (no
@@ -103,7 +111,8 @@ src/
                     security boundary — see the file's own doc comment)
     zod-errors.ts — fieldErrorsFromZod(): first-issue-per-field from a ZodError, used by
                     every form that shows inline field errors
-    validations/  — zod schemas mirrored from backend DTOs (now incl. validations/vm.ts)
+    validations/  — zod schemas mirrored from backend DTOs (now incl. validations/vm.ts and
+                    validations/security.ts's shared assignPayloadSchema)
     mock-data.ts, severity.ts, nav.ts
   types/
     auth.ts       — UserRole, SessionClaims — hand-matched to backend/src/generated/prisma
@@ -310,6 +319,20 @@ section is the working checklist — organized by area, not just priority order,
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
 
+**Recently completed** (2026-08-07, ninth pass — Phase 3, VM module): the first real
+security-module page, closing the single largest remaining gap called out below (see Phase 3
+of the adaptation plan for the full checklist). `(dashboard)/vm` (vulnerabilities, filters,
+pagination) and `(dashboard)/vm/assets` (asset CRUD) are both real, backend-wired pages now —
+the `[module]` stub no longer covers VM specifically, though it's untouched for the other
+five. Built a VM-specific `VulnerabilityStatusMenu` instead of reusing Phase 2's shared
+`StatusTransitionMenu`, confirming during Phase 2 that VM's status route takes the full enum
+rather than a restricted transition set. Real constraint found along the way (not in the
+original plan): `GET /users` is Admin-only on the backend, so only an Admin session can
+resolve an assignee's name — Analyst/Viewer sessions on the VM page never call it, avoiding a
+guaranteed 403; this applies to every later module's list page, not just VM's. Test suite
+grew from 143 to 164 tests; `tsc --noEmit`, `eslint`, `prettier --check`, and `next build`
+all verified clean.
+
 **Recently completed** (2026-08-07, eighth pass — Phase 2 shared foundation): the
 scaffolding every module page in Phases 3-8 will build on — see Phase 2 of the adaptation
 plan below for the full checklist. Highlights: `src/types/{security,vm,edr,siem,cti,soar,
@@ -507,7 +530,7 @@ since 2026-08-06.
 
 ## Testing
 
-24 files / 143 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+30 files / 164 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
 matrix, every auth/user/tenant form's validation/success/error paths (incl.
 `RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
 `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
@@ -515,7 +538,9 @@ the full refresh-token migration (`auth-token-refresh.test.ts`, added 2026-08-07
 `refreshAccessToken()`, `backendFetchAuthed`'s retry-on-401, and the login/refresh/logout
 Route Handlers' cookie relay), Phase 2's shared foundation (`vm-assets-route.test.ts`,
 `query-filters.test.ts`, `next-only-pagination.test.tsx`, `assignment-control.test.tsx`,
-`status-transition-menu.test.tsx`, added 2026-08-07), and — the gap called out below in
+`status-transition-menu.test.tsx`, added 2026-08-07), Phase 3's VM module
+(`vm-routes.test.ts`, `create-asset-form.test.tsx`, `asset-row-actions.test.tsx`,
+`vulnerability-status-menu.test.tsx`, added 2026-08-07), and — the gap called out below in
 earlier passes — every
 Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
 cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
@@ -884,20 +909,48 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       underlying submit logic is already fully covered via the Analyst/Unassign paths, which
       exercise the exact same `submit()` function.
 
-## Phase 3, VM module
+## Phase 3, VM module — DONE 2026-08-07
 
-- [ ] `src/app/(dashboard)/vm/page.tsx`: vulnerabilities list (severity, status, assignee,
-      asset, CVE if present), filters (severity, status, assignedToUserId including an
-      "assigned to me" quick filter using the session's own `userId`), "Next" pagination.
-- [ ] `src/app/(dashboard)/vm/assets/page.tsx` or a tab on the same page: asset list, create
-      (Admin, Analyst), edit, delete (blocked with a `409` if vulnerabilities reference it,
-      surface that message rather than a generic error).
-- [ ] Row actions: assign, unassign, status change via `UpdateVulnerabilityStatusDto`'s full
-      enum (`OPEN`, `REMEDIATED`, `ACCEPTED_RISK`), gated Admin/Analyst, hidden for Viewer.
-- [ ] Zod schemas mirroring `CreateVmAssetDto`, `UpdateVmAssetDto`,
-      `UpdateVulnerabilityStatusDto`, plus the shared `AssignDto`.
-- [ ] Route Handlers under `src/app/api/vm/**` via `proxyToBackend()`.
-- [ ] Tests: Route Handler RBAC/success/error, asset form validation, row-action dialogs.
+- [x] `src/app/(dashboard)/vm/page.tsx`: vulnerabilities list (severity, description, CVE,
+      resolved asset name/ip, status, assignee), filters (severity, status via plain
+      `<select>`s in a native GET `<form>` — not shadcn's `Select`, which doesn't submit as
+      part of a native form — plus an "assigned to me" checkbox using the session's own
+      `userId`), `NextOnlyPagination`. Resolves each vulnerability's `assetId` against a
+      second `GET /vm/assets` call (cheap, unpaginated) rather than showing a bare id.
+- [x] `src/app/(dashboard)/vm/assets/page.tsx`: asset list + create form (Admin, Analyst) +
+      `AssetRowActions` (edit / delete, delete surfaces the backend's `409` message as-is
+      when vulnerabilities still reference the asset — hidden entirely for Viewer).
+- [x] Row actions: `AssignmentControl` (shared, Phase 2) for assign/unassign; a **new
+      VM-specific** `VulnerabilityStatusMenu` (`src/components/vm/`), not the shared
+      `StatusTransitionMenu` — confirmed during Phase 2 that VM's `PATCH
+      vulnerabilities/:id/status` takes the full `VmVulnerabilitiesStatus` enum rather than a
+      restricted transition subset, so this menu offers all statuses except the current one,
+      not a fixed target list. Both hidden for Viewer.
+- [x] Zod schemas: `createVmAssetSchema`/`updateVmAssetSchema` (Phase 2) plus new
+      `updateVulnerabilityStatusSchema` (`src/lib/validations/vm.ts`) and a shared
+      `assignPayloadSchema` (`src/lib/validations/security.ts`, mirrors `AssignDto`, reusable
+      by every later module's assign routes too).
+- [x] Route Handlers, all via `proxyToBackend()`: `vm/assets/[id]` (`PATCH`/`DELETE`, on top
+      of Phase 2's `vm/assets` `GET`/`POST`), `vm/vulnerabilities` (`GET`),
+      `vm/vulnerabilities/[id]/status` (`PATCH`), `vm/vulnerabilities/[id]/assign`
+      (`POST`/`DELETE`).
+- [x] **Real constraint found, not in the original plan:** `GET /users` (used to resolve
+      `assignedToUserId` to a name, and to populate `AssignmentControl`'s Admin picker) is
+      `@Roles(ADMIN)`-gated on the backend — an Analyst or Viewer session can't call it. The
+      VM page only fetches it for an Admin session; Analyst still gets a working "Assign to
+      me" (needs no list) and Viewer sees no assign control at all, but neither role can see
+      an assignee's *name*, only `AssignmentControl`'s "Assigned" fallback. Documented in the
+      page's own comment rather than silently sending a request that would 403. This applies
+      to every later module's list page too, not just VM.
+- [x] Tests: `vm-routes.test.ts` (10, the four new Route Handlers' RBAC/success/error paths;
+      `vm-assets-route.test.ts` from Phase 2 already covers `vm/assets` itself),
+      `create-asset-form.test.tsx` (3), `asset-row-actions.test.tsx` (4, edit + delete +
+      409), `vulnerability-status-menu.test.tsx` (4). 21 new tests. Full suite: 164 tests
+      (was 143), all green; `tsc --noEmit`, `eslint`, `prettier --check`, and `next build`
+      all clean (same one pre-existing, unrelated `eslint` finding, still untouched).
+      Verified via the build's route table that the new static `vm/` and `vm/assets/` routes
+      take precedence over the dynamic `[module]/` stub, as Next's own routing rules say they
+      should — the stub itself is left in place for the other five modules, per Phase 12.
 
 ## Phase 4, EDR module
 
