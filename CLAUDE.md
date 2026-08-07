@@ -62,7 +62,7 @@ src/
     login/                                             — Figure 1 split-panel, NOT in (auth)
     (auth)/forgot-password, change-password             — public-ish, centered layout
     (dashboard)/dashboard, users, tenants, vm, edr, siem,
-      cti, soar, dfir, assets, [module]                    — sidebar layout, session-gated;
+      cti, soar, dfir, assets                              — sidebar layout, session-gated;
                                                              vm/, vm/assets/ (Phase 3),
                                                              edr/, edr/endpoints/ (Phase 4),
                                                              siem/, siem/logs/ (Phase 5),
@@ -71,10 +71,14 @@ src/
                                                              2026-08-07 — all six modules now
                                                              have real pages; assets/ (Phase
                                                              9, 2026-08-07) — the unified
-                                                             GET /assets/feed view; [module]
-                                                             is unreachable for any slug now
-                                                             but not yet deleted (Phase 12's
-                                                             job)
+                                                             GET /assets/feed view. The old
+                                                             [module]/page.tsx stub (a
+                                                             placeholder every module slug
+                                                             resolved to before its real
+                                                             folder existed) is deleted as of
+                                                             Phase 12, 2026-08-07 — every one
+                                                             of the six slugs above has been
+                                                             a real folder since Phase 8
     api/auth/..., api/users/..., api/tenants/...         — Route Handlers (BFF proxy layer)
     api/vm/**, api/edr/**, api/siem/**, api/cti/**,
       api/soar/**, api/dfir/**, api/assets/feed            — all six modules' routes, all
@@ -375,6 +379,24 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-08-07, eighteenth pass — Phase 12, RBAC and nav polish): mostly
+a confirmation pass, not a fix pass — audited all six module pages plus the Phase 9 asset
+feed page directly against the backend's "Viewer is read-only, not blocked" default before
+changing anything, and found every page and every row-action/table component was already
+built Viewer-correct across Phases 3-8 (no `redirect(` conditioned on role anywhere, every
+shared/module-specific action component already hides itself for `UserRole.VIEWER`, SOAR's
+Admin-only actions column correctly reflects its genuinely different RBAC rather than being
+a Viewer-specific gap). The one real change: deleted the now-fully-superseded
+`(dashboard)/[module]/page.tsx` placeholder stub and `src/lib/nav.ts`'s `isModuleSlug`/
+`ModuleSlug` exports, after re-confirming Next's static-over-dynamic routing precedence via
+a real rebuild (`/[module]` gone from the route table, every real module route unaffected) —
+not just re-citing Phase 3's earlier proof of the same rule. One genuine snag along the way:
+`tsc --noEmit` failed against stale generated `.next/**/types/validator.ts` files still
+referencing the deleted route until `.next` was cleared — not a code problem, a build-cache
+staleness issue worth remembering for future route deletions in this project. Test suite
+unchanged at 289 (nothing ever tested the stub); `tsc --noEmit`, `eslint`,
+`prettier --check`, and `next build` all reverified clean after the deletion.
 
 **Recently completed** (2026-08-07, seventeenth pass — Phase 11, tenant module activation
 UI): the last real backend surface with zero frontend at all — `TenantModule` CRUD
@@ -719,10 +741,10 @@ scan" entry, finding 1); that's no longer true. Nothing outstanding for what was
 frontend too (Phases 3-8, all done 2026-08-07 in one continuous session — see each phase's
 own entry in the adaptation plan below for what shipped and what was found along the way).**
 `vm`, `edr`, `siem`, `cti`, `soar`, and `dfir` all have real pages, real Route Handlers (all
-via the shared `proxyToBackend()`), and real types under `src/`. `(dashboard)/[module]/
-page.tsx` is now unreachable for all six slugs in practice (every one resolves to its own
-real folder first) but not yet deleted — that's Phase 12's explicit job, along with
-`src/lib/nav.ts`'s now-redundant `isModuleSlug` guard. **The asset aggregator (`GET
+via the shared `proxyToBackend()`), and real types under `src/`. The old
+`(dashboard)/[module]/page.tsx` placeholder stub and `src/lib/nav.ts`'s `isModuleSlug` guard
+are both deleted (Phase 12, 2026-08-07) — every module's nav link has resolved to a real
+page since Phase 8. **The asset aggregator (`GET
 /assets/feed`) is wired to real data too, as of Phase 9 (2026-08-07)** —
 `(dashboard)/assets` (the full paginated/filterable feed) and the dashboard's own
 KPIs/breakdown panels/recent-activity table all consume it now; `src/lib/mock-data.ts` is
@@ -1549,21 +1571,47 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       route table that `/api/tenants/[id]/modules` and
       `/api/tenants/[id]/modules/[moduleName]` both registered correctly.
 
-## Phase 12, RBAC and nav polish
+## Phase 12, RBAC and nav polish — DONE 2026-08-07
 
-- [ ] `src/lib/nav.ts`/`src/components/dashboard/sidebar-nav.tsx` currently link every role
-      to the same generic `[module]` stub. Once real pages exist, Viewer should still see
-      and reach all six module pages, read-only, per the backend's own "Viewer is read-only,
-      not blocked" default (decision 9 in the backend's module plan). No route-level change
-      needed on the frontend's auth layers for this, `requireSession()` has no role check
-      today for these routes and should not gain one, only the row-action components
-      (`AssignmentControl`, `StatusTransitionMenu`, the CRUD forms) need to hide themselves
-      for a Viewer session, matching how `UserRowActions` already handles self-targeting.
-- [ ] Once `(dashboard)/[module]/page.tsx` is fully replaced by six real folders (Phases 3
-      through 8), confirm Next's routing precedence actually resolves `/dashboard/vm` to the
-      new static `vm/` folder rather than the old dynamic `[module]/` one before deleting the
-      stub, check `node_modules/next/dist/docs/` rather than assuming, then delete the stub
-      and `src/lib/nav.ts`'s `isModuleSlug` guard if nothing else still needs it.
+- [x] Audited all six module pages plus `(dashboard)/assets` directly against decision 9
+      (Viewer is read-only, not blocked) before changing anything, rather than assuming a
+      fix was needed: grepped every page for `redirect(` conditioned on role and found
+      none — `vm`, `vm/assets`, `edr`, `edr/endpoints`, `siem`, `siem/logs`, `cti`, `soar`,
+      `dfir`, `dfir/[id]` all only use a role check to conditionally show/hide a create
+      form or gate the Admin-only `GET /users` call, never to block the page itself. Then
+      checked every row-action/table component's Viewer handling the same way:
+      `AssignmentControl`, `StatusTransitionMenu`, `VulnerabilityStatusMenu` all
+      `return null` for `UserRole.VIEWER`; `EndpointsTable`, `IocsTable`, `AssetsTable`,
+      `LinksTable` all gate their own actions column on `currentUserRole !== "VIEWER"`;
+      `PlaybooksTable` is the one correct exception (`currentUserRole === "ADMIN"` gates
+      its actions column, matching SOAR's genuinely different, Admin-only RBAC from every
+      other module, not a Viewer-specific gap). **Conclusion: nothing needed fixing** —
+      every module was already built Viewer-correct from Phases 3-8, and `SidebarNav`
+      already links every tenant-scoped role (including Viewer, via `isTenantScoped =
+      role !== SUPER_ADMIN`) to all six real module pages. This item is closed by
+      confirmation, not by a code change.
+- [x] Confirmed Next's routing precedence (checked before assuming, per the project's
+      standing rule) before deleting anything: a static segment always resolves over a
+      sibling dynamic one at the same level — this was already empirically proven back in
+      Phase 3 via the build's route table (`vm`/`vm/assets` registering as their own routes
+      alongside `[module]`, with `/dashboard/vm` never hitting the stub), and reconfirmed
+      here by rebuilding after deletion: `/[module]` is gone from the route table entirely,
+      every real module route (`/vm`, `/edr`, `/siem`, `/cti`, `/soar`, `/dfir`, `/assets`,
+      etc.) is still present and unaffected. Deleted
+      `(dashboard)/[module]/page.tsx` and `src/lib/nav.ts`'s `isModuleSlug`/`ModuleSlug`
+      exports — grepped first and confirmed neither was referenced anywhere else (`MODULES`
+      itself stays, `SidebarNav` still needs it for labels/links).
+- [x] **One real snag hit deleting the route, not code-level:** `tsc --noEmit` immediately
+      failed against `.next/{dev/,}types/validator.ts`, both referencing the now-deleted
+      `[module]/page.js` — Next's generated route-type validator files, stale from a
+      previous build, not regenerated automatically by a file deletion alone. `rm -rf .next`
+      before re-running `tsc` cleared it; worth remembering as a general "deleted a route,
+      `tsc` still complains" fix for future route removals in this project, not specific to
+      this one.
+- [x] Full suite re-verified after the deletion: 289 tests still passing (no test file ever
+      covered the stub or `isModuleSlug`, confirmed by grep before deleting, so the count
+      didn't change), `tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all
+      clean (same one pre-existing, unrelated `eslint` finding, still untouched).
 
 ## Phase 13, final verification pass
 
