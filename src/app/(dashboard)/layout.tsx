@@ -1,5 +1,5 @@
 import { requireSession } from "@/lib/session";
-import { backendFetchAuthed } from "@/lib/backend";
+import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import { SidebarNav } from "@/components/dashboard/sidebar-nav";
 import { UserRole } from "@/types/auth";
 
@@ -17,7 +17,7 @@ export default async function DashboardLayout({
   // with no tenantId), so there's no equivalent "who am I" endpoint for a Super Admin today.
   // Nothing to fetch for that role — the JWT claims are all we have.
   if (session.role !== UserRole.SUPER_ADMIN) {
-    const res = await backendFetchAuthed("/users/me");
+    const res = await backendFetchAuthedNoRefresh("/users/me");
     if (res.ok) {
       const me = (await res.json()) as { name: string; email: string };
       displayName = me.name;
@@ -33,7 +33,7 @@ export default async function DashboardLayout({
   // check for Analyst/Viewer, who never see the Users/Tenants nav item anyway.
   let hasPendingPasswordRequest = false;
   if (session.role === UserRole.ADMIN || session.role === UserRole.SUPER_ADMIN) {
-    const res = await backendFetchAuthed("/users/me/pending-password-requests");
+    const res = await backendFetchAuthedNoRefresh("/users/me/pending-password-requests");
     if (res.ok) {
       const data = (await res.json()) as { hasPending: boolean };
       hasPendingPasswordRequest = data.hasPending;

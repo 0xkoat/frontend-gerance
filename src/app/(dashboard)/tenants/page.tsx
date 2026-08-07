@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSession } from "@/lib/session";
-import { backendFetchAuthed } from "@/lib/backend";
+import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import { UserRole } from "@/types/auth";
 import {
   TenantsTable,
@@ -20,7 +20,7 @@ export default async function TenantsPage() {
     redirect("/dashboard");
   }
 
-  const res = await backendFetchAuthed("/tenants");
+  const res = await backendFetchAuthedNoRefresh("/tenants");
   const tenants: TenantSummary[] = res.ok ? await res.json() : [];
 
   return (

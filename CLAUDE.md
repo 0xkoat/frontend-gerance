@@ -113,25 +113,40 @@ from that layout without changing its URL (route groups never appear in the URL 
 
 # Frontend auth architecture (decided, not just scaffolded — read before changing)
 
-The backend is stateless JWT, `Authorization: Bearer <token>`, no refresh tokens, 1h expiry
-(`JwtModule.register({ signOptions: { expiresIn: '1h' } })` in both `auth.module.ts` and
-`users.module.ts`). The frontend wraps that in a small BFF (backend-for-frontend) layer
-instead of having client-side JS hold the token directly:
+**Migrated 2026-08-07 (Phase 1 of the adaptation plan below, done).** The backend moved to
+refresh-token rotation, a 15 minute access token, and account lockout on 2026-08-05/06 (see
+`backend/CLAUDE.md`'s "Auth: refresh token rotation & logout" and "Auth: account lockout and
+password reuse prevention" sections); the frontend now matches it. See "Recently completed"
+in the functionality backlog below for the full change log and what was found along the way
+(a real backend bug: `users.module.ts` was still signing the post-password-change token with
+a stale 1h expiry, fixed as part of this pass). Module work (Phase 3 onward) can now proceed.
+
+The backend is stateless-JWT-plus-refresh-cookie: a 15 minute `Authorization: Bearer <token>`
+access token (`JwtModule.register({ signOptions: { expiresIn: '15m' } })` in both
+`auth.module.ts` and `users.module.ts`), and a longer-lived `refresh_token` httpOnly cookie
+(`Path=/api/auth`, rotated on every use, family-killed on reuse) that the backend sets
+directly — see `backend/src/auth/auth.controller.ts`. The frontend wraps the access token in
+a small BFF (backend-for-frontend) layer instead of having client-side JS hold it directly,
+and now also relays the backend's refresh cookie so the browser can hold it too (the
+`refresh_token` cookie's `Path=/api/auth` lines up with the frontend's own auth routes,
+which is why the browser attaches it there automatically):
 
 1. **The browser never sees the raw JWT.** `POST /api/auth/login` (a Next.js Route
    Handler, `src/app/api/auth/login/route.ts`) calls the real backend, then stores the
-   `access_token` in an **httpOnly** cookie (`secops_token`, `src/lib/session.ts`). Every
-   other mutation that needs the token (`change-password`, `create user`) goes through its
-   own Route Handler that reads the cookie server-side and attaches
-   `Authorization: Bearer <token>` — see `src/lib/backend.ts`'s `backendFetchAuthed`.
-   `login/route.ts` also rejects any request whose `Content-Type` isn't
-   `application/json` before parsing the body — found by `/security-review`: without it, a
-   cross-site page could reach this one route with no CORS preflight (`mode: "no-cors"` +
-   `Content-Type: text/plain`, since `Request.json()` ignores the declared type) and plant
-   an attacker-controlled session in a victim's browser (login CSRF). Every other mutating
-   route is already safe by construction — they require the cookie to pre-exist, and
-   `SameSite=Lax` keeps it off cross-site requests; login is the one route that doesn't
-   need a pre-existing cookie, since its job is to create one.
+   `access_token` in an **httpOnly** cookie (`secops_token`, `src/lib/session.ts`) and
+   relays the backend's rotated `refresh_token` cookie back to the browser (see
+   `src/lib/backend.ts`'s `applyRefreshCookie`). Every other mutation that needs the access
+   token (`change-password`, `create user`) goes through its own Route Handler that reads
+   the cookie server-side and attaches `Authorization: Bearer <token>` — see
+   `src/lib/backend.ts`'s `backendFetchAuthed`. `login/route.ts` also rejects any request
+   whose `Content-Type` isn't `application/json` before parsing the body — found by
+   `/security-review`: without it, a cross-site page could reach this one route with no CORS
+   preflight (`mode: "no-cors"` + `Content-Type: text/plain`, since `Request.json()` ignores
+   the declared type) and plant an attacker-controlled session in a victim's browser (login
+   CSRF). Every other mutating route is already safe by construction — they require the
+   cookie to pre-exist, and `SameSite=Lax` keeps it off cross-site requests; login (and now
+   `refresh`, though its precondition is the `refresh_token` cookie rather than a body) are
+   the routes that don't need a pre-existing session cookie themselves.
 2. **No signature verification on the frontend, on purpose.** The frontend doesn't hold
    `JWT_SECRET` and shouldn't — sharing it just to re-verify a token received a moment ago
    over a trusted server call buys nothing. `src/lib/jwt.ts` only _decodes_ (checks `exp`,
@@ -157,13 +172,36 @@ instead of having client-side JS hold the token directly:
      `backend/CLAUDE.md`). Nothing on the frontend is a substitute for those; they're UX
      polish (don't flash protected UI, give a nice error) on top of a backend that already
      enforces this server-side regardless of what the frontend does.
-4. **Cookie lifetime matches the token** (`SESSION_MAX_AGE_SECONDS = 3600`) since there's no
-   refresh token to extend it — a user's session silently expires when their JWT does, and
-   the next request just 401s → gets redirected to `/login`. No "session felt like it was
-   still alive" surprises.
+4. **Cookie lifetime matches the access token** (`SESSION_MAX_AGE_SECONDS = 900`, i.e. 15
+   minutes) — but unlike the pre-2026-08-07 design, the session doesn't just silently expire
+   at that point anymore. `src/lib/backend.ts`'s `backendFetchAuthed` retries once through
+   `refreshAccessToken()` on a 401, using the browser's `refresh_token` cookie to mint a new
+   15-minute access token (and a rotated `refresh_token`) transparently. A session now only
+   actually ends when the refresh token itself is rejected (expired, or its family was
+   killed by reuse detection) — that's when a request finally 401s all the way through and
+   the next navigation's `requireSession()`/`proxy.ts` redirect to `/login` takes over.
+5. **The refresh-capable `backendFetchAuthed` is Route-Handler-only — Server Components use
+   `backendFetchAuthedNoRefresh` instead.** Found during Phase 1 implementation, not in the
+   original plan: `next/headers`' `cookies().set()` throws when called during Server
+   Component rendering (Next's own docs, "Understanding Cookie Behavior in Server
+   Components"), and the danger isn't just the throw — the backend rotates (invalidates) the
+   *old* refresh token the instant it receives a `POST /auth/refresh` request, regardless of
+   whether the frontend can persist the new one afterward. A Server Component that triggered
+   a refresh it couldn't persist would leave the browser holding an already-dead refresh
+   token, which would trip the backend's reuse-detection and kill the whole token family on
+   the next real attempt. The four Server Component pages that read backend data directly
+   during render (`(dashboard)/dashboard`, `(dashboard)/layout.tsx`,
+   `(dashboard)/tenants[/[id]]`, `(dashboard)/users`) use `backendFetchAuthedNoRefresh` —
+   same shape, no refresh attempt, a 401 just propagates. This is safe because
+   `requireSession()` already redirects once the access token's own `exp` has passed, before
+   any of these calls run in the same request — a 401 reaching one of them is a genuine
+   backend rejection, not an expired-token case a refresh would fix. **This matters for
+   Phase 3 onward:** any new server-component module page that fetches backend data directly
+   during render must use `backendFetchAuthedNoRefresh`, not `backendFetchAuthed` — see
+   decision 3 in the adaptation plan below, which assumed the opposite before this was found.
 
-If a future session wants to change this (e.g., add refresh tokens, switch to NextAuth/an
-auth library), that's a real architecture change — flag it explicitly rather than quietly
+If a future session wants to change this further (e.g., proactive refresh, NextAuth/an auth
+library), that's a real architecture change — flag it explicitly rather than quietly
 swapping the cookie strategy.
 
 # Backend integration
@@ -210,16 +248,22 @@ swapping the cookie strategy.
   wire up `GET`/`POST /tenants`, and the dashboard's `SuperAdminOverview` pulls the same
   real list instead of mock data. Tenant _deletion_ — `DELETE /tenants/:id` exists on the
   backend — has no UI yet.)
-- **Dashboard content is mock data** (`src/lib/mock-data.ts`) because the SIEM/SOAR/CTI/
-  EDR/DFIR/VM modules don't exist on the backend yet — only `auth`, `users`, `tenants` are
-  implemented. The `[module]/page.tsx` stub route exists purely so the sidebar nav (which
-  matches the architecture spec's Figure 2 mockup) doesn't link to 404s.
+- **Dashboard content is mock data** (`src/lib/mock-data.ts`). This was accurate when
+  written, but as of 2026-08-06 **all six modules (SIEM, SOAR, CTI, EDR, DFIR, VM) plus an
+  asset aggregator and an SSE event stream are fully built on the backend** (see
+  `backend/CLAUDE.md`'s module implementation plan, all phases checked). Nothing on the
+  frontend has been adapted to consume them yet. `mock-data.ts`, the `[module]/page.tsx`
+  stub, and this bullet are all now stale in the same way. Full replacement plan is in the
+  adaptation plan further down this file, do not silently keep extending `mock-data.ts`.
 - **No row-level actions on the alerts table** (assign/escalate/resolve) — intentionally
-  not faked with disabled buttons. Add them, and the Viewer read-only restriction on them,
-  once there's a real SIEM module behind the table.
-- **Admin can list/create users but not yet edit/delete/reset-password/change-role from
-  the UI**, even though those backend endpoints exist (`PATCH/DELETE /users/:id`,
-  `PATCH /users/:id/role`, `POST /users/:id/reset-password`). Listed as upcoming work below.
+  not faked with disabled buttons. See the adaptation plan below, this is now buildable for
+  real (SIEM's assign/status routes exist), no longer blocked on a missing backend module.
+- ~~Admin can list/create users but not yet edit/delete/reset-password/change-role from
+  the UI~~ **No longer true, this bullet was stale.** The full action set landed the same
+  day this file's "Known gaps" section was last written (see the "Third pass" entry under
+  "Recently completed" below) and this bullet was never removed afterward, contradicting
+  that entry. Left struck through rather than deleted so the drift is visible; corrected
+  2026-08-06 while auditing this file against the backend for the adaptation plan below.
 - **`npm audit` reports a moderate PostCSS advisory** — it's a transitive dependency
   _inside_ `next` itself; `npm audit fix --force` would downgrade Next.js to a `9.x`
   canary to "fix" it, which is worse than the advisory. Left as an accepted, low-relevance
@@ -233,6 +277,13 @@ swapping the cookie strategy.
   exactly what's covered and what isn't.
 - Favicon is generated (`src/app/icon.tsx`, matches the sidebar's brand mark), not a
   designed brand asset — fine as a placeholder, not final branding.
+- **Every module's `query()` (VM, EDR, SIEM, CTI, SOAR, DFIR) and `AssetService.
+  getUnifiedFeed` return a bare array, with no total count**, unlike `GET /users` which
+  returns `{ users, total, page, pageSize }`. Verified directly against
+  `backend/src/**/*.service.ts`: only `UsersService.findAllForTenant` runs a `$transaction`
+  alongside a `count()`. This is a real backend limitation, not something the frontend can
+  work around alone, plan pagination UI for these list pages accordingly (see the
+  adaptation plan below, "shared foundation" phase).
 
 # Functionality backlog (what's still to build)
 
@@ -240,6 +291,27 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-08-07, seventh pass — Phase 1 auth migration): full refresh-token
+migration matching the backend's 2026-08-05/06 changes (see "Frontend auth architecture"
+above and Phase 1 of the adaptation plan below for the complete checklist). Highlights: new
+`POST /api/auth/refresh` Route Handler; `login`/`logout` now relay/consume the backend's
+`refresh_token` cookie; `backendFetchAuthed` retries once through a lazy refresh on a 401;
+`SESSION_MAX_AGE_SECONDS` dropped from 1h to 15m to match the backend's real access-token
+lifetime. Two things found and fixed along the way that weren't in the original plan: (1) a
+real backend bug — `users.module.ts`'s own `JwtModule` registration, used to re-sign the
+access token right after the mandatory first-login password change, was still hardcoded to
+`expiresIn: '1h'`, silently outliving every other token by 4x; fixed to `15m`. (2) a
+Server-Component-safety gap in the plan itself — `cookies().set()` can't run during Server
+Component rendering, so the four pages that fetch backend data directly during render
+(`dashboard`, dashboard `layout.tsx`, `tenants[/[id]]`, `users`) would have thrown on any
+401 that reached the new refresh-capable `backendFetchAuthed`; split into
+`backendFetchAuthed` (Route Handlers) and `backendFetchAuthedNoRefresh` (Server Components)
+and moved those four call sites, correcting decision 3 of the adaptation plan for Phase 3
+onward. Test suite grew from 97 to 110 tests (new `__tests__/auth-token-refresh.test.ts`,
+15 tests), all green; `tsc --noEmit`, `eslint`, and `next build` all verified clean.
+`__tests__/` is still `.gitignore`d (see the Testing backlog below) — not fixed as part of
+this pass, still the top item there.
 
 **Recently completed** (2026-07-28, sixth pass — password-change enforcement + request
 flow): found and fixed a real backend bug while investigating a reported "new users aren't
@@ -345,6 +417,16 @@ mutating route is still covered by the "cookie must already exist" + `SameSite=L
 reasoning in the architecture section above; revisit only if a route is ever added that,
 like these two, doesn't require a pre-existing session.
 
+Backend note (2026-08-07, no frontend change needed): `LoginDto.email` is now
+trimmed/lowercased server-side the same way `CreateUserDto.email` already was, closing a gap
+where a user whose account was created with mixed-case-normalized storage could fail to log
+in on casing alone. Purely a backend fix — the frontend already just forwards whatever the
+login form's zod schema validates as a well-formed email, nothing to change here.
+
+Refresh-token migration: **done, 2026-08-07.** See Phase 1 of the adaptation plan below for
+the full checklist and what was found along the way; see "Frontend auth architecture" above
+for the resulting design.
+
 ## User management (Admin)
 
 `(dashboard)/users` now has the full action set: list, create, edit, change role, reset
@@ -354,8 +436,9 @@ server-side either way). Users created here now always come back with
 above). Sidebar's Users link (Admin) / Tenants link (Super Admin) shows a red dot when
 `GET /users/me/pending-password-requests` returns `hasPending: true` — one designated
 recipient per tenant, not a broadcast; see `backend/CLAUDE.md`'s hard-rules list for the
-exact targeting rule. Nothing left here — next work in this area is really about the
-security modules (row-level alert actions, once a module exists) or deeper test coverage.
+exact targeting rule. Nothing left here on its own terms, next work in this area is the
+security-module adaptation plan below, which reuses this section's row-actions pattern
+(`UserRowActions`) as the template for every module's assign/unassign/status controls.
 
 ## Tenant management (Super Admin)
 
@@ -364,33 +447,45 @@ tenant's Admins too (`TenantsService.findById`'s `include: { users: { where: { r
 ADMIN } } }`), rendered via `TenantAdminsTable` with the same pending-reset badge/tint as
 `(dashboard)/users`, plus a reset-password action that only appears when the tenant has
 exactly one Admin (see `ResetAdminPasswordButton` and `UsersService.resetSoleAdminPassword`
-on the backend). Nothing outstanding here for now.
+on the backend). Nothing outstanding for what was built.
 
-## Security modules (SIEM, SOAR, CTI, EDR, DFIR, VM)
+- [ ] **`PATCH /tenants/:id` (rename) has no UI.** Backend route exists, nothing calls it.
+      Full plan is Phase 11 of the adaptation plan below.
+- [ ] **`TenantModule` CRUD (`GET/POST/PATCH/DELETE /tenants/:id/modules[/:moduleName]`)
+      has no UI at all.** This is the actual "which modules is this tenant subscribed to"
+      activation surface described in root `../CLAUDE.md`, and until it's built, every
+      tenant created through the real API has zero active modules (see
+      `backend/CLAUDE.md`'s "Full completeness scan" entry, finding 1). Full plan is
+      Phase 11 below.
 
-- [ ] None of the six modules have real backend endpoints yet — this is the actual next
-      phase of backend work, not a frontend gap per se. `(dashboard)/[module]/page.tsx` is a
-      placeholder stub purely so the sidebar nav (matching Figure 2) doesn't 404.
-- [ ] Once a module gets real backend endpoints, decide whether it replaces its slice of the
-      generic `[module]/page.tsx` stub with a dedicated
-      `src/app/(dashboard)/siem/`-style folder (recommended — the generic stub doesn't scale
-      to real per-module data/actions).
-- [ ] Row-level actions on the alerts table (assign/escalate/resolve) — intentionally not
-      built with mock data/disabled buttons; needs a real SIEM module behind it first, at
-      which point the Viewer role's read-only restriction on those actions should be added
-      alongside them.
+## Security modules, asset feed, and real-time delivery (SIEM, SOAR, CTI, EDR, DFIR, VM)
+
+**All six modules, the asset aggregator, and the SSE event stream are fully built on the
+backend as of 2026-08-06** (see `backend/CLAUDE.md`'s module implementation plan, every
+phase checked). Nothing on the frontend consumes any of it yet: `(dashboard)/[module]/page.tsx`
+is still the placeholder stub, `src/lib/mock-data.ts` still backs the dashboard, and there is
+no Route Handler, page, or type anywhere under `src/` for any of `vm`, `edr`, `siem`, `cti`,
+`soar`, `dfir`, `assets`, or `events`. This is the single largest remaining gap between the
+two halves of this repository. Full phased plan, decisions, and verified API contract are in
+the dedicated section below, "Backend to frontend adaptation plan (2026-08-06)". Do not
+re-derive the backend route list by hand when picking up this work, the plan already has it
+verified against the actual controller source, re-verify only if the backend has changed
+since 2026-08-06.
 
 ## Testing
 
-18 files / 97 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+19 files / 110 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
 matrix, every auth/user/tenant form's validation/success/error paths (incl.
 `RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
 `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
-and — the gap called out below in earlier passes — every Route Handler under
-`/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")` cookie-store mock
-plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid unsigned JWT for the
-session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned token is safe to use
-in tests — this file never verifies signatures either). **`__tests__/` is currently
+the full refresh-token migration (`auth-token-refresh.test.ts`, added 2026-08-07 —
+`refreshAccessToken()`, `backendFetchAuthed`'s retry-on-401, and the login/refresh/logout
+Route Handlers' cookie relay), and — the gap called out below in earlier passes — every
+Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
+cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
+unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
+token is safe to use in tests — this file never verifies signatures either). **`__tests__/`
+is currently
 `.gitignore`d** — these tests run and pass locally but aren't tracked in git; a fresh clone
 or CI would see zero test files. Found 2026-07-28, not yet fixed. Still missing, roughly in
 order of value:
@@ -408,6 +503,11 @@ order of value:
       `userEvent.type` call leaked keystrokes into the next test). Worth revisiting if the
       suite grows large enough that 15s stops being enough headroom, or if this turns out to
       be WSL2-specific and CI runs on different infrastructure.
+- [ ] Once the adaptation plan below lands, the test count needs to grow proportionally.
+      Forty-plus new backend routes across six modules plus the asset feed, each needing at
+      minimum a Route Handler success/error/RBAC test, would roughly double or triple the
+      current suite on its own, before counting form and row-action component tests. Track
+      this as a real, sized cost, not an afterthought per phase.
 
 ## Polish / infra
 
@@ -435,6 +535,473 @@ order of value:
       (`src/app/loading.tsx`), which doesn't cover `(dashboard)/layout.tsx`'s own async
       `GET /users/me` fetch (a segment's `loading.tsx` wraps its `page.tsx`, not a sibling
       `layout.tsx` in the same segment).
+
+# Backend to frontend adaptation plan (2026-08-06)
+
+Written after a full comparison of this file against `backend/CLAUDE.md` and the actual
+backend source (every controller's route decorators, every DTO, and `prisma/schema.prisma`
+were read directly for this pass, not assumed from prior notes). The backend has grown far
+past what this file described: refresh-token rotation, account lockout, and all six security
+modules plus an asset aggregator and an SSE stream landed between 2026-08-04 and 2026-08-06,
+none of which this file or the actual frontend code had caught up to. This section is the
+full task list to close that gap.
+
+**How to use this section.** Same convention as `backend/CLAUDE.md`'s own module
+implementation plan: one unchecked item is roughly one session's worth of work. Work phases
+in order, they build on each other (shared types and the auth migration have to exist before
+a module page can be built against them). Check a box only once it is actually built and
+verified, not just attempted. Update this plan as reality diverges from it, do not let it
+drift the way the old three-bullet stub it replaces did.
+
+## Decisions made while writing this plan (confirm or override before starting, do not
+silently accept)
+
+These are genuine design choices with tradeoffs, not the only way to build this. Each is
+recorded with its reasoning so a future session can revisit deliberately instead of guessing
+why something was built a certain way.
+
+1. **The refresh-token relay stays inside the existing Route Handler pattern, it does not
+   switch to Next.js `rewrites()`.** A transparent rewrite proxy would make `SameSite=Lax`
+   work correctly for free (the browser would see the auth routes as same-origin), but it
+   would also bypass every Route Handler currently doing real work on these paths: zod
+   validation, the login CSRF Content-Type guard, and `firstErrorMessage()` error
+   normalization. Keeping the Route Handler pattern means the frontend has to manually relay
+   the backend's `Set-Cookie` header for `refresh_token` instead of getting that for free.
+   That relay work is real and is scoped explicitly in Phase 1 below. Revisit this choice
+   only if the manual relay turns out to be fighting the framework harder than expected.
+2. **Access token storage does not change.** It stays in the httpOnly `secops_token` cookie
+   set by the frontend's own Route Handlers, the browser still never sees the raw JWT. Only
+   its lifetime changes (1h to 15m, matching the backend) and a refresh path gets added
+   behind it. This preserves the existing "no signature verification on the frontend, on
+   purpose" reasoning and the existing two-layer route protection design, neither of which
+   the backend's auth change actually invalidates.
+3. **Token refresh is triggered lazily, on a 401 from `backendFetchAuthed`, not proactively
+   on a timer.** ~~This app is server-rendered for almost every data fetch (every module
+   page planned below is a server component calling `backendFetchAuthed` directly)~~ —
+   **corrected during Phase 1 implementation (2026-08-07):** server components must call
+   `backendFetchAuthedNoRefresh` instead, not the refresh-capable `backendFetchAuthed` —
+   `cookies().set()` can't run during Server Component rendering, and attempting the refresh
+   anyway would burn the browser's refresh token without being able to persist its
+   replacement. See point 5 in the "Frontend auth architecture" section above for the full
+   reasoning; every module page in Phases 3-8 below needs to use the No-Refresh variant for
+   its data-fetching Server Component, same as the four existing pages already do. Route
+   Handlers (mutations, and any page that fetches through one) still get the real lazy
+   refresh, so "a fresh access token check happens on effectively every navigation" still
+   holds — it just happens one layer differently than originally assumed. A proactive
+   client-side refresh timer would only matter for the SSE connection and any future
+   client-heavy page that stays mounted for more than 15 minutes without a server round
+   trip. Scoped explicitly as a Phase 10 (SSE) concern, not built everywhere by default.
+4. **New shared types live in `src/types/security.ts`, mirroring the backend's Prisma
+   enums, plus one file per module under a new `src/types/` split if a single file gets too
+   large.** Follows the existing precedent set by `src/types/auth.ts` (hand-mirrored `as
+   const` object plus derived type, re-verify against `backend/prisma/schema.prisma` if it
+   ever looks stale) rather than introducing a codegen step, same "no shared types package"
+   tradeoff already accepted for the rest of this API contract.
+5. **Severity casing changes from the mock data's lowercase (`"critical"`) to the backend's
+   real uppercase enum (`CRITICAL`) everywhere real data is involved.** `src/lib/severity.ts`
+   currently keys off the mock `Severity` type. This is a breaking change to that file's
+   exported map keys, not just an addition, planned explicitly in Phase 2 rather than
+   letting two casings coexist.
+6. **One Route Handler per backend route, generated through a small shared proxy helper, not
+   forty-plus hand-written near-duplicates.** The six modules add roughly 40 new backend
+   routes between them (see the verified route inventory in Phase 2). Hand-writing a
+   `route.ts` per route the way `api/users/**` was built would work but is a lot of
+   repeated boilerplate (zod validation, `requireAdmin`/`requireAnalystOrAdmin`-style guard,
+   `backendFetchAuthed` call, error normalization). Phase 2 below plans a shared
+   `proxyToBackend()` helper, parameterized by path, method, an optional zod schema, and an
+   optional role guard, called from a thin `route.ts` per route. This is the same
+   "extract the repeated pattern once" instinct already applied to `src/lib/api-guards.ts`.
+7. **No manual "send a test event" form for any module's `POST /<module>/events` route.**
+   Those routes are Admin-gated as a deliberate stand-in for a machine caller that does not
+   exist yet (see `backend/CLAUDE.md`'s module plan, decision 7). Building a UI form for them
+   would be building a fake integration for a route whose entire reason for existing is to be
+   replaced by a real vendor webhook or API key later. Explicitly out of scope, not an
+   oversight, matches the backend's own "don't build fake real automation" discipline applied
+   to SOAR execution.
+8. **Per-record detail pages are built only where the backend has a dedicated detail
+   endpoint.** That is `GET /dfir/incidents/:id` alone, none of the other five modules have
+   one. Everywhere else, a slide-over/drawer sourced from the already-fetched list row is
+   used instead of inventing a client-side "detail view" that just re-renders data the list
+   call already returned. Keeps the frontend from silently pretending to have more backend
+   surface than it does.
+9. **Pagination on the six module list pages and the asset feed is "Next enabled while the
+   last page was full," not page-count-aware.** Every one of these endpoints returns a bare
+   array with no total count (verified directly against the service methods, see the "Known
+   gaps" bullet above this section). A "Page 3 of 9" style control the way `(dashboard)/users`
+   has is not honestly buildable without a backend change. If total counts become valuable
+   enough to justify it, that is a backend task (mirroring `UsersService.findAllForTenant`'s
+   `$transaction` plus `count()` pattern) to raise separately, not something to fake
+   client-side by fetching every page to count rows.
+10. **The Security Overview dashboard's four mock KPIs (`criticalAlerts`, `highAlerts`,
+    `openIncidents`, `resolvedToday`) do not map onto any single backend endpoint.** Computing
+    them for real means either several small aggregate queries or client-side counting over
+    `GET /assets/feed` results, both are real design work, not a trivial mock-to-real swap.
+    Scoped explicitly in Phase 9, do not assume this is a quick find-and-replace.
+
+## Verified backend route inventory (2026-08-06, re-verified 2026-08-07 — re-verify again if this looks stale)
+
+Read directly from each controller's decorators, not carried over from memory. `Roles` shown
+is the `@Roles(...)` decorator on that specific route or its controller class; no `@Roles`
+at all means any authenticated tenant role (Admin, Analyst, Viewer) can call it, per the
+backend's own RBAC default (decision 9 in its module plan).
+
+**2026-08-07 backend hardening pass — no new routes, but two response-shape changes that
+matter once the corresponding phases below get built** (full detail in
+`backend/CLAUDE.md`, this is the frontend-relevant summary only; everything else from that
+pass — refresh-token race, atomic lockout counter, polling resilience, the build-hang fix,
+CTI's internal match logic — is backend-internal and needs no frontend change):
+
+- **`POST .../assign` on SIEM, EDR, and DFIR now returns `409 Conflict`** if the target
+  record is already `RESOLVED` (SIEM/EDR) or `CONTAINED`/`RESOLVED` (DFIR), instead of
+  silently reopening it. The error body is a normal Nest `ConflictException` shape, so
+  `firstErrorMessage()` (`src/lib/backend.ts`) already handles it like any other backend
+  `409` — no special-casing needed, just don't assume assign always succeeds when planning
+  `AssignmentControl`'s error states (Phase 2, Phase 4, Phase 5, Phase 8 below). **VM's
+  `POST vulnerabilities/:id/assign` is unaffected** — VM's assign never touched a status
+  field to begin with, so there was nothing to guard.
+- **`POST /dfir/incidents/:id/links` is now idempotent on retry**: linking the same
+  `(incidentId, sourceType, sourceId)` twice returns the existing link instead of creating a
+  second, indistinguishable row. Relevant to Phase 8's "link an existing record" form — a
+  double-submit (e.g. a slow network causing a retry) is now safe by itself, no client-side
+  debounce/guard required to avoid duplicate links.
+
+- **Auth** (`/auth`): `POST login` (public), `POST refresh` (public, reads/sets the
+  `refresh_token` cookie), `POST logout` (any role, `@SkipPasswordCheck()`), `POST
+  forgot-password` (public).
+- **Users** (`/users`): `GET me`, `PATCH me/password`, `POST me/request-password-change`,
+  `GET me/pending-password-requests` (Admin, Super Admin), `POST` (Admin), `GET` (Admin),
+  `GET :id` (Admin), `PATCH :id` (Admin), `PATCH :id/role` (Admin), `POST
+  :id/reset-password` (Admin, Super Admin), `DELETE :id` (Admin). All already wired on the
+  frontend, see "User management" above.
+- **Tenants** (`/tenants`, class-level Super Admin): `POST`, `GET`, `GET :id`, `PATCH :id`
+  (rename, **no frontend**), `DELETE :id`, `GET :id/modules` (**no frontend**), `POST
+  :id/modules` (**no frontend**), `PATCH :id/modules/:moduleName` (**no frontend**),
+  `DELETE :id/modules/:moduleName` (**no frontend**).
+- **VM** (`/vm`): `GET assets`, `POST assets` (Admin, Analyst), `PATCH assets/:id` (Admin,
+  Analyst), `DELETE assets/:id` (Admin, Analyst), `GET vulnerabilities`, `PATCH
+  vulnerabilities/:id/status` (Admin, Analyst), `POST vulnerabilities/:id/assign` (Admin,
+  Analyst), `DELETE vulnerabilities/:id/assign` (Admin, Analyst), `POST events` (Admin, out
+  of scope per decision 7 above). **No frontend at all.**
+- **EDR** (`/edr`): `GET endpoints`, `PATCH endpoints/:id` (Admin, Analyst), `DELETE
+  endpoints/:id` (Admin, Analyst), `GET detections`, `POST detections/:id/assign` (Admin,
+  Analyst), `DELETE detections/:id/assign` (Admin, Analyst), `PATCH detections/:id/status`
+  (Admin, Analyst), `POST events` (Admin, out of scope). No manual endpoint-create route
+  exists, endpoints only ever appear via `ingest()`'s upsert. **No frontend at all.**
+- **SIEM** (`/siem`): `GET logs`, `GET alerts`, `POST alerts/:id/assign` (Admin, Analyst),
+  `DELETE alerts/:id/assign` (Admin, Analyst), `PATCH alerts/:id/status` (Admin, Analyst),
+  `POST events` (Admin, out of scope). **No frontend at all**, this is the module the
+  current mock alerts table is a stand-in for.
+- **CTI** (`/cti`): `GET iocs`, `POST iocs` (Admin, Analyst), `PATCH iocs/:id` (Admin,
+  Analyst), `DELETE iocs/:id` (Admin, Analyst), `POST events` (Admin, out of scope). **No
+  frontend at all.**
+- **SOAR** (`/soar`): `GET playbooks`, `POST playbooks` (Admin), `PATCH playbooks/:id`
+  (Admin), `DELETE playbooks/:id` (Admin), `GET executions`. **No frontend at all.**
+- **DFIR** (`/dfir`): `GET incidents`, `GET incidents/:id` (the one module with a detail
+  endpoint, see decision 8 above), `POST incidents/:id/assign` (Admin, Analyst), `DELETE
+  incidents/:id/assign` (Admin, Analyst), `PATCH incidents/:id/status` (Admin, Analyst),
+  `POST incidents/:id/links` (Admin, Analyst), `DELETE incidents/:id/links/:linkId` (Admin,
+  Analyst). **No frontend at all.**
+- **Assets** (`/assets`): `GET feed`. **No frontend at all.**
+- **Events** (`/events`): `GET stream` (`@Sse`, requires a valid access token like any other
+  authenticated route, the browser's native `EventSource` cannot attach an `Authorization`
+  header, this is why Phase 10 below needs a Route Handler proxy, not a direct browser
+  connection). **No frontend at all.**
+
+## Phase 1, auth migration (blocking, do this before any module work) — DONE 2026-08-07
+
+- [x] Update `src/lib/session.ts`: `SESSION_MAX_AGE_SECONDS` from `60 * 60` to `15 * 60`
+      (matching the backend's new access token lifetime), and correct the file's own comment
+      claiming "no refresh tokens exist in this API."
+- [x] Add cookie relay helpers to `src/lib/backend.ts`: `getRefreshToken()` (reads the
+      browser's own `refresh_token` cookie via `next/headers`, for forwarding to the backend
+      on refresh/logout) and `applyRefreshCookie()` (parses the `refresh_token=...`
+      `Set-Cookie` header off a backend auth response via `Headers.getSetCookie()` — verified
+      available on this project's Node 22 runtime — and re-applies it via `cookies().set()`
+      rather than a raw header copy, since `cookies().set()` is the only mechanism that also
+      works from inside `backendFetchAuthed`'s retry path, which doesn't hold a `NextResponse`
+      object of its own; see decision 1 above for why the relay is manual in the first place).
+- [x] New `src/app/api/auth/refresh/route.ts`, backed by `src/lib/backend.ts`'s
+      `refreshAccessToken()` (shared with `backendFetchAuthed`'s retry path rather than the
+      route re-implementing the logic or self-calling over HTTP): reads the browser's
+      `refresh_token` cookie, forwards it to the backend's `POST /auth/refresh` as a `Cookie`
+      header, relays the rotated `refresh_token` back to the browser, and updates the
+      `secops_token` session cookie from the response body's `access_token`. No CSRF
+      Content-Type guard needed (no body, and it's already safe-by-construction like every
+      other cookie-precondition route — see the route's own comment).
+- [x] `src/app/api/auth/login/route.ts` now relays the backend's `refresh_token` `Set-Cookie`
+      via the same `applyRefreshCookie()`.
+- [x] `src/app/api/auth/logout/route.ts` now calls the backend's `POST /auth/logout`
+      (forwarding both the access token and the `refresh_token` cookie) before clearing local
+      cookies — best-effort single attempt via `backendFetch` (not `backendFetchAuthed`,
+      deliberately, to avoid double-spending the refresh token through a lazy-refresh retry
+      mid-logout; see the route's own comment). Local cookies clear either way, even if the
+      backend call throws.
+- [x] Wired the lazy refresh-on-401 behavior into `backendFetchAuthed` per decision 3 above:
+      on a 401, calls `refreshAccessToken()` once, retries the original request once with the
+      new token, and only then propagates a 401 to the caller. An `isRetry` flag (internal,
+      never passed by call sites) guards against a second consecutive 401 triggering a second
+      refresh attempt. **Real finding made while implementing this, not in the original
+      plan:** this refresh-capable version is unsafe to call from a Server Component (see
+      point 5 in "Frontend auth architecture" above and decision 3's correction below) — split
+      into `backendFetchAuthed` (Route Handlers) and a new `backendFetchAuthedNoRefresh`
+      (Server Components), and moved the four existing Server-Component call sites
+      (`(dashboard)/dashboard`, `(dashboard)/layout.tsx`, `(dashboard)/tenants[/[id]]`,
+      `(dashboard)/users`) to the No-Refresh variant. This also fixed a latent, harmless-until-now
+      doc/implementation mismatch: `backend.ts`'s own comment already claimed Route Handlers
+      were the only allowed caller, but these four pages called the (then non-refreshing)
+      `backendFetchAuthed` directly.
+- [x] Confirmed account lockout needs no frontend change (re-verified against
+      `auth.service.ts` directly): the backend returns an identical generic message whether
+      the account does not exist, the password is wrong, or the account is currently locked.
+      No distinguishing client-side message added.
+- [x] Updated `src/lib/session.ts`'s comment (was already the only one referencing "no
+      refresh tokens"/a 1 hour lifetime — `src/proxy.ts` never made that claim itself, nothing
+      to change there).
+- [x] Tests: `__tests__/auth-token-refresh.test.ts` (new, 15 tests) covers
+      `refreshAccessToken()` (no cookie / backend rejection / success-rotates-both-cookies),
+      `backendFetchAuthed`'s retry-once-then-propagate and no-second-refresh-on-second-401
+      behavior, `POST /api/auth/refresh`, `POST /api/auth/logout` (forwards both tokens /
+      still clears cookies on a backend failure / skips the backend call with no session), and
+      `POST /api/auth/login`'s refresh-cookie relay on success (and non-relay on failure).
+      Full suite: 110 tests (was 97), all green; `tsc --noEmit`, `eslint`, and `next build`
+      all clean (one pre-existing, unrelated `eslint` error in `user-row-actions.tsx` — not
+      touched by this pass, not introduced by it).
+- [x] **Extra, approved by the user before starting:** fixed a real backend bug found while
+      verifying this file against the backend source — `backend/src/users/users.module.ts`'s
+      own `JwtModule` registration (used to re-sign the access token right after the mandatory
+      first-login password change) was still `expiresIn: '1h'`, unchanged from the
+      pre-migration design and never updated alongside `auth.module.ts`'s `15m`. Fixed to
+      `15m`; `backend/CLAUDE.md` should get a matching note next time it's touched.
+
+## Phase 2, shared foundation (before any module page)
+
+- [ ] `src/types/security.ts`: hand-mirror `Severity`, `ModuleName`,
+      `VmVulnerabilitiesStatus`, `CtiIocType`, `EdrEndpointStatus`, `EdrDetectionStatus`,
+      `SiemAlertStatus`, `SoarExecutionStatus`, `DfirIncidentStatus`, `DfirLinkSourceType`
+      from `backend/prisma/schema.prisma`'s enum blocks (all uppercase, see decision 5
+      above), same `as const` object plus derived type pattern as `src/types/auth.ts`.
+- [ ] Per-module record types, hand-matched to the Prisma models in `backend/prisma/
+      schema.prisma`: `VmAsset`, `VmVulnerability`, `EdrEndpoint`, `EdrDetection`, `SiemLog`,
+      `SiemAlert`, `CtiIoc`, `SoarPlaybook`, `SoarExecution`, `DfirIncident`, `DfirLink`,
+      `AssetFeedEntry`, `TenantModule`. Every assignable record type needs `assignedToUserId:
+      string | null` and its module's status field, every module record needs `rawData:
+      unknown | null` if it is ever going to be shown (most list views will not need it).
+- [ ] Rework `src/lib/severity.ts` to key off the new uppercase `Severity` type instead of
+      the mock lowercase one (decision 5). Check every current caller of `SEVERITY_COLOR`/
+      `SEVERITY_LABEL`/`SEVERITY_ORDER` for the casing change before deleting the old mock
+      type, `mock-data.ts` itself should keep the lowercase type only if it is still needed
+      for whatever the dashboard rework in Phase 9 leaves behind, otherwise delete it there
+      too.
+- [ ] Shared query-filter builder: one function turning a `{ severity?, assignedToUserId?,
+      dateFrom?, dateTo?, page?, pageSize? }` object into a `URLSearchParams`, serializing
+      `Date` values as ISO strings (the backend's `BaseQueryDto` uses `class-transformer`'s
+      `@Type(() => Date)`, which needs a parseable ISO string on the wire). Reused by every
+      module's list Route Handler and the asset feed's.
+- [ ] Shared "Next only" pagination control per decision 9 above, a simplified variant of
+      the Previous/Next buttons already built for `(dashboard)/users`, without the "Page X"
+      label that implies a known total.
+- [ ] `proxyToBackend()` helper per decision 6 above, in `src/lib/backend.ts` or a new
+      `src/lib/proxy-route.ts`: takes a backend path, HTTP method, an optional zod schema to
+      validate the incoming body against, and an optional role guard function (reusing/
+      extending `src/lib/api-guards.ts`'s `requireAdmin`/`requireSuperAdmin`, plus a new
+      `requireAnalystOrAdmin` most module mutation routes need). Returns a Route Handler
+      function. Write this against one real route first (recommend `VM`'s asset list, the
+      simplest shape) before generating the other ~35, to catch shape mistakes in the helper
+      itself before they are repeated forty times.
+- [ ] Shared `AssignmentControl` component: for Admin, a searchable select of that tenant's
+      Analysts and Admins (no existing "list tenant members" endpoint returns just names for
+      a picker, reuse `GET /users` filtered client-side, or add a lighter query param
+      backend-side if the full user list proves too heavy, flag this explicitly if it comes
+      up rather than silently over-fetching); for Analyst, a single "Assign to me" button
+      with no picker, matching `resolveAssignee`'s server-side rule exactly (an Analyst
+      cannot assign to anyone else, the backend already rejects it, but the UI should not
+      offer the option in the first place). Plus an "Unassign" action wired to each module's
+      `DELETE .../assign` route. Must also surface the `409 Conflict` the backend now returns
+      (2026-08-07) when assigning an already-resolved/contained SIEM/EDR/DFIR record —
+      `firstErrorMessage()` already extracts a readable message from it, this component just
+      needs to display that instead of a generic failure toast. Does not apply to VM.
+- [ ] Shared `StatusTransitionMenu` component, parameterized by a module's allowed target
+      statuses (SIEM/EDR: `ESCALATED`, `RESOLVED`; DFIR: `ESCALATED`, `CONTAINED`,
+      `RESOLVED`; VM: no status-transition route exists, only its own separate `PATCH
+      vulnerabilities/:id/status` accepting the full `VmVulnerabilitiesStatus` enum, model
+      this one separately rather than forcing it through the same component if the shapes
+      do not actually line up).
+
+## Phase 3, VM module
+
+- [ ] `src/app/(dashboard)/vm/page.tsx`: vulnerabilities list (severity, status, assignee,
+      asset, CVE if present), filters (severity, status, assignedToUserId including an
+      "assigned to me" quick filter using the session's own `userId`), "Next" pagination.
+- [ ] `src/app/(dashboard)/vm/assets/page.tsx` or a tab on the same page: asset list, create
+      (Admin, Analyst), edit, delete (blocked with a `409` if vulnerabilities reference it,
+      surface that message rather than a generic error).
+- [ ] Row actions: assign, unassign, status change via `UpdateVulnerabilityStatusDto`'s full
+      enum (`OPEN`, `REMEDIATED`, `ACCEPTED_RISK`), gated Admin/Analyst, hidden for Viewer.
+- [ ] Zod schemas mirroring `CreateVmAssetDto`, `UpdateVmAssetDto`,
+      `UpdateVulnerabilityStatusDto`, plus the shared `AssignDto`.
+- [ ] Route Handlers under `src/app/api/vm/**` via `proxyToBackend()`.
+- [ ] Tests: Route Handler RBAC/success/error, asset form validation, row-action dialogs.
+
+## Phase 4, EDR module
+
+- [ ] `src/app/(dashboard)/edr/page.tsx`: detections list (severity, status, assignee,
+      endpoint hostname, MITRE techniques if present), same filter set as VM.
+- [ ] `src/app/(dashboard)/edr/endpoints/page.tsx` or a tab: endpoint list (hostname, ip, os,
+      status, last seen), edit, delete (blocked with `409` if it has detections, point at
+      `DECOMMISSIONED` as the alternative, matching the backend's own error message). No
+      create form, there is no manual create route, only `ingest()`'s upsert.
+- [ ] Row actions: assign, unassign, status change (`ESCALATED`/`RESOLVED` only, per
+      `TRANSITIONABLE_STATUSES`).
+- [ ] Zod schemas mirroring `UpdateEdrEndpointDto`, `UpdateEdrDetectionStatusDto`, the
+      shared `AssignDto`.
+- [ ] Route Handlers under `src/app/api/edr/**`.
+- [ ] Tests, same shape as Phase 3.
+
+## Phase 5, SIEM module
+
+- [ ] `src/app/(dashboard)/siem/page.tsx`: alerts list, replacing the mock alerts table
+      described in "Known gaps" above. Same filter set. Consider whether `GET logs` needs
+      its own view at all for a first pass, logs are the raw pre-alert record and may not be
+      worth a dedicated page before there is a real user asking for it, flag this rather
+      than silently building or silently skipping it.
+- [ ] Row actions: assign, unassign, status change (`ESCALATED`/`RESOLVED` only).
+- [ ] Zod schema mirroring `UpdateSiemAlertStatusDto`, the shared `AssignDto`.
+- [ ] Route Handlers under `src/app/api/siem/**`.
+- [ ] Tests, same shape as Phase 3.
+
+## Phase 6, CTI module
+
+- [ ] `src/app/(dashboard)/cti/page.tsx`: IOC list (type, value, confidence, source), filter
+      by type plus the shared date range.
+- [ ] Create (Admin, Analyst), edit confidence/source only (type and value are the IOC's
+      identity per `UpdateCtiIocDto`'s own comment, not editable), delete.
+- [ ] Zod schemas mirroring `CreateCtiIocDto`, `UpdateCtiIocDto`.
+- [ ] Route Handlers under `src/app/api/cti/**`.
+- [ ] Tests, same shape as Phase 3.
+
+## Phase 7, SOAR module
+
+- [ ] `src/app/(dashboard)/soar/page.tsx`: two sections, playbooks and executions.
+- [ ] Playbook CRUD, Admin only: create/edit with a severity-only `triggerCondition` picker
+      (matching `TriggerConditionDto`, a single `Severity` select, not a free-form JSON
+      editor, the backend does not accept anything richer today), an `actions` field that
+      stays a raw JSON textarea since the backend genuinely validates it as an open object
+      (SOAR execution is simulated, per the backend's own decision 8, there is no real
+      action schema to build a structured form against), `isActive` toggle, delete (blocked
+      with `409` if it has executions, point at the `isActive` toggle instead, matching the
+      backend's error message).
+- [ ] Executions list, read-only for every role, no assign/status actions exist for this
+      module by design (`SoarExecution` is already terminal by the time a human sees it).
+- [ ] Zod schemas mirroring `CreateSoarPlaybookDto` (including the nested
+      `TriggerConditionDto`), `UpdateSoarPlaybookDto`.
+- [ ] Route Handlers under `src/app/api/soar/**`.
+- [ ] Tests, same shape as Phase 3.
+
+## Phase 8, DFIR module
+
+- [ ] `src/app/(dashboard)/dfir/page.tsx`: incident list (title, severity, status, assignee).
+- [ ] `src/app/(dashboard)/dfir/[id]/page.tsx`: the one real detail page per decision 8
+      above, incident fields plus its `DfirLink[]` (source type, source id), a manual
+      "link an existing record" form (`sourceType` select from `DfirLinkSourceType`'s six
+      values, `sourceId` as a raw UUID input, there is no id-typeahead/search endpoint to
+      build anything friendlier against, note this as a real limitation rather than
+      over-building past what the backend supports), and unlink per row.
+- [ ] Row actions on the list: assign, unassign, status change (`ESCALATED`, `CONTAINED`,
+      `RESOLVED`, per the five-value `DfirIncidentStatus`).
+- [ ] Zod schemas mirroring `UpdateDfirIncidentStatusDto`, `CreateDfirLinkDto`, the shared
+      `AssignDto`.
+- [ ] Route Handlers under `src/app/api/dfir/**`.
+- [ ] Tests, same shape as Phase 3, plus the detail page's link/unlink flow.
+
+## Phase 9, asset feed and dashboard integration
+
+- [ ] `src/app/(dashboard)/assets/page.tsx` (or fold into the existing dashboard, decide
+      explicitly rather than defaulting to one without considering the other): `GET
+      /assets/feed` list with severity/assignedToUserId/date filters and "Next" pagination,
+      each row showing its source module (badge), type, severity, status, assignee, and
+      deep-linking to that record's owning module page.
+- [ ] Replace `src/lib/mock-data.ts`'s severity breakdown and alerts table with data derived
+      from real module queries or the feed, per decision 5's casing change.
+- [ ] Replace the four mock KPI numbers per decision 10 above, this needs its own small
+      design pass (which endpoint or combination of endpoints backs each number), not a
+      find-and-replace.
+- [ ] Decide whether `mockTopAttackSources` has any real backend equivalent at all today (a
+      quick read of the schema suggests no module currently stores a structured "source IP"
+      field consistently enough to aggregate one), if not, either drop that dashboard panel
+      or leave it clearly marked as illustrative rather than presenting mock numbers as real.
+
+## Phase 10, real-time delivery (SSE)
+
+- [ ] `src/app/api/events/stream/route.ts`: a Route Handler that server-side fetches the
+      backend's `GET /events/stream` with the caller's `Authorization` header attached (via
+      `backendFetchAuthed`-style token access) and streams the response body back to the
+      browser. Check `node_modules/next/dist/docs/` for this Next version's actual streaming
+      Route Handler semantics before assuming standard `Response` streaming behavior applies
+      unmodified, this is exactly the kind of API this project has already been burned by
+      trusting prior knowledge on (`middleware.ts` to `proxy.ts`, `reset` to
+      `unstable_retry`). This exact follow-up is already flagged from the backend side too,
+      see `backend/CLAUDE.md`'s Phase 8 entry.
+- [ ] A client component wrapping `new EventSource("/api/events/stream")`, mounted first on
+      the Security Overview dashboard and the new asset feed page only, per decision in this
+      phase, not wired into every module list page in the same pass. Live behavior: a
+      `sonner` toast on a new critical-severity event, live-prepend on the feed/dashboard
+      list, live status-pill updates on `*.assigned`/`*.status_changed`/`*.unassigned`
+      frames for whichever records are currently rendered.
+- [ ] No tenant-filtering logic needed client-side, `EventsService.streamForTenant` already
+      filters server-side per the backend's own design.
+- [ ] Revisit decision 3 above (lazy-only refresh) once this phase is built, a long-lived
+      SSE connection plus a 15 minute access token used only for the initial proxy request
+      means the underlying HTTP connection outlives the token that authorized it, confirm
+      whether that matters given how the backend's SSE auth actually works (checked once at
+      connection time, not per-frame) before assuming it needs a fix.
+- [ ] Tests: the Route Handler's streaming behavior is awkward to unit test meaningfully,
+      a live manual verification (matching the backend's own SSE verification approach, see
+      `backend/CLAUDE.md`'s Phase 8 entry) is likely more honest here than a mocked test that
+      does not exercise real streaming.
+
+## Phase 11, tenant module activation UI (Super Admin)
+
+- [ ] Add a rename action next to the existing delete button on `(dashboard)/tenants`,
+      wired to the new `PATCH /api/tenants/[id]` Route Handler.
+- [ ] `(dashboard)/tenants/[id]` gains a "Modules" section: list active `TenantModule` rows,
+      activate (`ModuleName` picker plus an optional raw JSON `config` field, matching
+      `ActivateTenantModuleDto`'s shape), toggle `isActive`, edit `config`, remove.
+- [ ] Zod schemas mirroring `ActivateTenantModuleDto`, `UpdateTenantModuleDto`,
+      `UpdateTenantDto`.
+- [ ] Route Handlers under `src/app/api/tenants/[id]/modules/**` and the new `PATCH
+      /api/tenants/[id]`.
+- [ ] Tests, same shape as the existing tenant Route Handler coverage.
+
+## Phase 12, RBAC and nav polish
+
+- [ ] `src/lib/nav.ts`/`src/components/dashboard/sidebar-nav.tsx` currently link every role
+      to the same generic `[module]` stub. Once real pages exist, Viewer should still see
+      and reach all six module pages, read-only, per the backend's own "Viewer is read-only,
+      not blocked" default (decision 9 in the backend's module plan). No route-level change
+      needed on the frontend's auth layers for this, `requireSession()` has no role check
+      today for these routes and should not gain one, only the row-action components
+      (`AssignmentControl`, `StatusTransitionMenu`, the CRUD forms) need to hide themselves
+      for a Viewer session, matching how `UserRowActions` already handles self-targeting.
+- [ ] Once `(dashboard)/[module]/page.tsx` is fully replaced by six real folders (Phases 3
+      through 8), confirm Next's routing precedence actually resolves `/dashboard/vm` to the
+      new static `vm/` folder rather than the old dynamic `[module]/` one before deleting the
+      stub, check `node_modules/next/dist/docs/` rather than assuming, then delete the stub
+      and `src/lib/nav.ts`'s `isModuleSlug` guard if nothing else still needs it.
+
+## Phase 13, final verification pass
+
+- [ ] Walk the verified route inventory above one more time against the finished frontend,
+      confirm every route has either a Route Handler plus UI affordance, or an explicit,
+      documented reason it does not (the four `POST .../events` routes per decision 7, EDR's
+      missing manual-create per its own note). No route should be silently missing without
+      one of those two outcomes being true and written down.
+- [ ] Full test suite run, confirm `__tests__/` is no longer gitignored before trusting any
+      test count reported here (see "Testing" above).
+- [ ] Update this file's "Directory structure" diagram, "Known gaps" section, and
+      "Functionality backlog" once each phase actually ships, per this file's own existing
+      "update it as items land, do not let it drift" rule. Update
+      `docs/internship-report-frontend.md` per phase too, matching the backend's own
+      per-phase logging discipline, not as one giant retroactive writeup at the end.
 
 # Working with this repo
 

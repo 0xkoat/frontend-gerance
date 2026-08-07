@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { requireSession } from "@/lib/session";
-import { backendFetchAuthed } from "@/lib/backend";
+import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import { UserRole } from "@/types/auth";
 import { UsersTable, type TenantUser } from "@/components/users/users-table";
 import { CreateUserForm } from "@/components/users/create-user-form";
@@ -27,7 +27,7 @@ export default async function UsersPage({
   const requestedPage = Number((await searchParams).page) || 1;
   const page = Math.max(1, requestedPage);
 
-  const res = await backendFetchAuthed(
+  const res = await backendFetchAuthedNoRefresh(
     `/users?page=${page}&pageSize=${PAGE_SIZE}`,
   );
   const data: { users: TenantUser[]; total: number } = res.ok

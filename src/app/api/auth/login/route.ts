@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   backendFetch,
   firstErrorMessage,
+  applyRefreshCookie,
   type BackendErrorBody,
 } from "@/lib/backend";
 import { setSessionCookie } from "@/lib/session";
@@ -9,7 +10,11 @@ import { loginSchema } from "@/lib/validations/auth";
 
 // Thin proxy to POST /api/auth/login on the backend. The only reason this exists instead
 // of the browser calling the backend directly: it's the one place allowed to read the raw
-// access_token and put it in an httpOnly cookie, so client-side JS never sees it.
+// access_token and put it in an httpOnly cookie, so client-side JS never sees it. It also
+// relays the backend's rotated refresh_token cookie back to the browser (see
+// src/lib/backend.ts's applyRefreshCookie()) — the backend sets that cookie on its own
+// response, which the browser never sees directly since this route calls the backend
+// server-side.
 //
 // This is also the one Route Handler in the app that a cross-site request can reach with
 // no cookie precondition (every other mutating route requires the session cookie to
@@ -64,6 +69,7 @@ export async function POST(request: Request) {
   };
 
   await setSessionCookie(access_token);
+  await applyRefreshCookie(backendRes);
 
   return NextResponse.json({ mustChangePassword });
 }

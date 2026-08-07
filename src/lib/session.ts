@@ -8,9 +8,13 @@ import { decodeJwtPayload } from "@/lib/jwt";
 // Decoding here is only for optimistic UI/redirect decisions
 export const SESSION_COOKIE = "secops_token";
 
-// Matches the backend's JwtModule signOptions (expiresIn: '1h') — no refresh tokens exist
-// in this API, so the cookie should never outlive the token itself.
-export const SESSION_MAX_AGE_SECONDS = 60 * 60;
+// Matches the backend's AuthModule JwtModule signOptions (expiresIn: '15m', since
+// 2026-08-05's refresh-token migration — see backend/CLAUDE.md's "Auth: refresh token
+// rotation & logout" section). The cookie should never outlive the access token itself; a
+// separate refresh_token cookie (Path=/api/auth, set by the backend, relayed by
+// src/app/api/auth/{login,refresh}/route.ts) is what actually extends the session past this
+// window — see src/lib/backend.ts's refreshAccessToken()/backendFetchAuthed().
+export const SESSION_MAX_AGE_SECONDS = 15 * 60;
 
 export async function getSession(): Promise<SessionClaims | null> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSession } from "@/lib/session";
-import { backendFetchAuthed } from "@/lib/backend";
+import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import { UserRole } from "@/types/auth";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 import { SeverityBreakdown } from "@/components/dashboard/severity-breakdown";
@@ -25,7 +25,7 @@ export default async function DashboardPage() {
 // (id, name, createdAt only; no per-tenant alert/incident counts exist on the backend yet,
 // so this is a distinct view rather than the same dashboard with a tenant switcher).
 async function SuperAdminOverview() {
-  const res = await backendFetchAuthed("/tenants");
+  const res = await backendFetchAuthedNoRefresh("/tenants");
   const tenants: TenantSummary[] = res.ok ? await res.json() : [];
 
   return (

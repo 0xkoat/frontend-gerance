@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSession } from "@/lib/session";
-import { backendFetchAuthed } from "@/lib/backend";
+import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import { UserRole } from "@/types/auth";
 import type { TenantUser } from "@/components/users/users-table";
 import { TenantAdminsTable } from "@/components/tenants/tenant-admins-table";
@@ -27,7 +27,7 @@ export default async function TenantDetailPage({
   }
 
   const { id } = await params;
-  const res = await backendFetchAuthed(`/tenants/${id}`);
+  const res = await backendFetchAuthedNoRefresh(`/tenants/${id}`);
   if (res.status === 404) {
     notFound();
   }
