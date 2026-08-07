@@ -108,7 +108,10 @@ src/
                    both (dashboard)/assets and the dashboard's own "recent activity" panel
     users/       — Admin user list, create-user form, UserRowActions (edit/role/reset/delete
                    dropdown + dialogs)
-    tenants/     — Super Admin tenant list, create form, delete-confirm button
+    tenants/     — Super Admin tenant list, create form, delete-confirm/rename buttons
+                   (RenameTenantButton added Phase 11, 2026-08-07), tenant detail's
+                   "Modules" section (TenantModulesTable, ActivateModuleForm,
+                   TenantModuleRowActions — Phase 11)
     security/    — cross-module shared row-action components, added Phase 2 (2026-08-07):
                    NextOnlyPagination, AssignmentControl, StatusTransitionMenu — every
                    module page in Phases 3-8 reuses these instead of rebuilding row actions
@@ -154,8 +157,11 @@ src/
                     every form that shows inline field errors
     validations/  — zod schemas mirrored from backend DTOs (now incl. validations/vm.ts,
                     validations/edr.ts, validations/siem.ts, validations/cti.ts,
-                    validations/soar.ts, validations/dfir.ts, and
-                    validations/security.ts's shared assignPayloadSchema)
+                    validations/soar.ts, validations/dfir.ts,
+                    validations/security.ts's shared assignPayloadSchema, and
+                    validations/tenants.ts gaining updateTenantSchema/
+                    activateTenantModuleSchema/updateTenantModuleSchema in Phase 11,
+                    2026-08-07)
     asset-feed.ts — isOpenFeedEntry() (source-aware terminal-status check, added Phase 9,
                     2026-08-07) and hrefForFeedEntry() (DFIR gets a real per-record deep
                     link, every other source links to its module's list page)
@@ -369,6 +375,28 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-08-07, seventeenth pass — Phase 11, tenant module activation
+UI): the last real backend surface with zero frontend at all — `TenantModule` CRUD
+(`GET/POST/PATCH/DELETE /tenants/:id/modules[/:moduleName]`) — is wired up, plus
+`PATCH /tenants/:id` (rename). `(dashboard)/tenants/[id]` gains a "Modules" section
+(`TenantModulesTable` + `ActivateModuleForm`, and `TenantModuleRowActions` for toggle
+`isActive`/edit `config`/remove), following the same "raw JSON textarea for an open,
+unconstrained `config` object" reasoning already established for SOAR's `actions` field —
+there's no per-module config shape defined anywhere yet to build a structured form against.
+One small addition beyond the plan's literal text: `ActivateModuleForm`'s picker filters
+out modules the tenant already has a row for, since `activateModule` 409s on a duplicate by
+a real unique constraint — cheap, obviously correct, not asked for explicitly. The two new
+Route Handlers under `modules/**` use `proxyToBackend()` (new surface, no existing sibling
+to stay consistent with); the rename `PATCH` was added to the existing hand-rolled
+`tenants/[id]/route.ts` instead, matching its sibling `DELETE`'s style rather than mixing
+patterns within one file. One real accessibility gap found and fixed while writing tests,
+not worked around in the test itself: the edit dialog's config textarea had no associated
+`<label>` — added one, matching every other form field in the app. Test suite grew from 264
+to 289 tests (24 new); `tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all
+verified clean. With this phase, every route in the "Verified backend route inventory"
+below has either a Route Handler plus UI, or one of decision 7/EDR's own documented
+exceptions — Phase 13's final pass has nothing left to close, only to confirm.
 
 **Recently completed** (2026-08-07, sixteenth pass — Phase 10, real-time SSE delivery): a
 streaming Route Handler (`src/app/api/events/stream/route.ts`) proxying the backend's `GET
@@ -676,16 +704,14 @@ tenant's Admins too (`TenantsService.findById`'s `include: { users: { where: { r
 ADMIN } } }`), rendered via `TenantAdminsTable` with the same pending-reset badge/tint as
 `(dashboard)/users`, plus a reset-password action that only appears when the tenant has
 exactly one Admin (see `ResetAdminPasswordButton` and `UsersService.resetSoleAdminPassword`
-on the backend). Nothing outstanding for what was built.
-
-- [ ] **`PATCH /tenants/:id` (rename) has no UI.** Backend route exists, nothing calls it.
-      Full plan is Phase 11 of the adaptation plan below.
-- [ ] **`TenantModule` CRUD (`GET/POST/PATCH/DELETE /tenants/:id/modules[/:moduleName]`)
-      has no UI at all.** This is the actual "which modules is this tenant subscribed to"
-      activation surface described in root `../CLAUDE.md`, and until it's built, every
-      tenant created through the real API has zero active modules (see
-      `backend/CLAUDE.md`'s "Full completeness scan" entry, finding 1). Full plan is
-      Phase 11 below.
+on the backend). `RenameTenantButton` (Phase 11, 2026-08-07) now wires `PATCH
+/tenants/:id` up too. The tenant detail page also gained a full "Modules" section the same
+phase — `TenantModulesTable`/`ActivateModuleForm`/`TenantModuleRowActions` cover the
+complete `TenantModule` CRUD surface (`GET/POST/PATCH/DELETE /tenants/:id/modules
+[/:moduleName]`), the "which modules is this tenant subscribed to" activation model
+described in root `../CLAUDE.md` — previously every tenant created through the real API had
+zero active modules with no way to change that (see `backend/CLAUDE.md`'s "Full completeness
+scan" entry, finding 1); that's no longer true. Nothing outstanding for what was built.
 
 ## Security modules, asset feed, and real-time delivery (SIEM, SOAR, CTI, EDR, DFIR, VM)
 
@@ -705,13 +731,13 @@ deleted. **The SSE event stream (`GET /events/stream`) is live too, as of Phase 
 critical-event toast and a debounced live refresh on the dashboard and `(dashboard)/assets`.
 Full phased plan, decisions, and verified API contract are in the dedicated section below,
 "Backend to frontend adaptation plan (2026-08-06)". Do not re-derive the backend route list
-by hand when picking up Phase 11 onward, the plan already has it verified against the
+by hand when picking up Phase 12 onward, the plan already has it verified against the
 actual controller source, re-verify only if the backend has changed since 2026-08-06 (or
 2026-08-07's hardening note, already folded in).
 
 ## Testing
 
-43 files / 264 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+46 files / 289 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
 matrix, every auth/user/tenant form's validation/success/error paths (incl.
 `RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
 `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
@@ -742,7 +768,10 @@ test per the plan's own note that byte-for-byte streaming is better verified liv
 `describeCreatedEvent()`/`severityOf()`; `live-events.test.tsx` — the `<LiveEvents />`
 client component against a small mock `EventSource`, covering toast-only-on-critical,
 debounced-refresh-on-every-classifiable-frame, burst-coalescing, ignoring unrecognized
-frames, and connection cleanup on unmount, added 2026-08-07), and — the gap called out below
+frames, and connection cleanup on unmount, added 2026-08-07), Phase 11's tenant module
+activation UI (extended `tenants-routes.test.ts` with `PATCH /api/tenants/:id` and the full
+modules CRUD surface, plus `rename-tenant-button.test.tsx`, `activate-module-form.test.tsx`,
+`tenant-module-row-actions.test.tsx`, added 2026-08-07), and — the gap called out below
 in earlier passes — every
 Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
 cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
@@ -1471,18 +1500,54 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       `eslint` finding, still untouched). Confirmed via the build's route table that
       `/api/events/stream` registered correctly as a dynamic route.
 
-## Phase 11, tenant module activation UI (Super Admin)
+## Phase 11, tenant module activation UI (Super Admin) — DONE 2026-08-07
 
-- [ ] Add a rename action next to the existing delete button on `(dashboard)/tenants`,
-      wired to the new `PATCH /api/tenants/[id]` Route Handler.
-- [ ] `(dashboard)/tenants/[id]` gains a "Modules" section: list active `TenantModule` rows,
-      activate (`ModuleName` picker plus an optional raw JSON `config` field, matching
-      `ActivateTenantModuleDto`'s shape), toggle `isActive`, edit `config`, remove.
-- [ ] Zod schemas mirroring `ActivateTenantModuleDto`, `UpdateTenantModuleDto`,
-      `UpdateTenantDto`.
-- [ ] Route Handlers under `src/app/api/tenants/[id]/modules/**` and the new `PATCH
-      /api/tenants/[id]`.
-- [ ] Tests, same shape as the existing tenant Route Handler coverage.
+- [x] `RenameTenantButton` next to `DeleteTenantButton` on `(dashboard)/tenants`
+      (`TenantsTable`'s action column), wired to the new `PATCH /api/tenants/[id]` Route
+      Handler — a dialog pre-filled with the current name, not a bare inline-edit, matching
+      the dialog-based edit pattern every other rename/edit action in this app already uses
+      (`UserRowActions`, `PlaybookRowActions`).
+- [x] `(dashboard)/tenants/[id]` gains a "Modules" section: `TenantModulesTable` (module,
+      status badge, a truncated one-line config preview, row actions) plus
+      `ActivateModuleForm` (a `ModuleName` `<Select>` plus an optional raw JSON `config`
+      textarea, matching `ActivateTenantModuleDto`'s shape exactly — same "no structured
+      form, the backend accepts an open object" reasoning as SOAR's `actions` field).
+      `TenantModuleRowActions` covers toggle `isActive` + edit `config` in one PATCH-backed
+      edit dialog (mirroring `PlaybookRowActions`' isActive-toggle-plus-JSON-textarea shape
+      closely) and remove (DELETE, confirm-dialog-gated like `DeleteTenantButton` — a
+      TenantModule's config is real per-tenant integration state, not a delete-with-no-undo
+      cost trivial enough to skip confirming, unlike DFIR's low-stakes Unlink).
+- [x] **Small UX addition beyond the plan's literal text, not asked for but cheap and
+      obviously correct:** `ActivateModuleForm`'s picker filters out modules the tenant
+      already has a row for (`activateModule` 409s on a duplicate — `TenantModule` is
+      one-row-per-tenant-per-module by a real unique constraint) rather than letting the
+      form offer a choice guaranteed to fail; re-activating/reconfiguring an existing module
+      is `TenantModuleRowActions`' edit dialog (PATCH), not this form.
+- [x] Zod schemas mirroring `ActivateTenantModuleDto`, `UpdateTenantModuleDto`,
+      `UpdateTenantDto` — `updateTenantSchema`, `activateTenantModuleSchema`,
+      `updateTenantModuleSchema` in `src/lib/validations/tenants.ts`.
+- [x] Route Handlers: `PATCH` added to the existing `src/app/api/tenants/[id]/route.ts`
+      (hand-rolled, matching that file's existing `DELETE` — both predate
+      `proxyToBackend()`, kept consistent within the one file rather than mixing patterns);
+      `src/app/api/tenants/[id]/modules/route.ts` (`GET`/`POST`) and
+      `src/app/api/tenants/[id]/modules/[moduleName]/route.ts` (`PATCH`/`DELETE`), both new
+      and both via `proxyToBackend()` — the two-segment dynamic path worked with no changes
+      to the helper, the same thing Phase 8's DFIR unlink route already proved. All five
+      routes guarded by `requireSuperAdmin`, matching `TenantsController`'s class-level
+      `@Roles(SUPER_ADMIN)`.
+- [x] Tests: extended `tenants-routes.test.ts` with `PATCH /api/tenants/:id` and the full
+      modules CRUD surface (13 new cases: RBAC, 400/404/409 paths, and success paths for
+      each route), plus `rename-tenant-button.test.tsx` (3), `activate-module-form.test.tsx`
+      (4, incl. the already-active-filter and the all-modules-configured empty state), and
+      `tenant-module-row-actions.test.tsx` (4). One real accessibility gap caught while
+      writing these, fixed in the component rather than worked around in the test: the edit
+      dialog's config textarea had no associated `<label>` — added a `FieldLabel`, matching
+      every other form field in this app, instead of leaving the test to reach for it by
+      DOM structure alone. 24 new tests. Full suite: 289 tests (was 264), all green;
+      `tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all clean (same one
+      pre-existing, unrelated `eslint` finding, still untouched). Confirmed via the build's
+      route table that `/api/tenants/[id]/modules` and
+      `/api/tenants/[id]/modules/[moduleName]` both registered correctly.
 
 ## Phase 12, RBAC and nav polish
 
