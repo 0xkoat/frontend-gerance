@@ -7,6 +7,7 @@ import { buildQueryParams, hasNextPage } from "@/lib/query-filters";
 import { SEVERITY_ORDER, SEVERITY_LABEL } from "@/lib/severity";
 import { NextOnlyPagination } from "@/components/security/next-only-pagination";
 import { FeedTable } from "@/components/assets/feed-table";
+import { LiveEvents } from "@/components/security/live-events";
 import type { TenantUser } from "@/components/users/users-table";
 import type { Severity } from "@/types/security";
 import type { AssetFeedEntry } from "@/types/assets";
@@ -74,6 +75,11 @@ export default async function AssetsPage({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Super Admin has no tenantId — GET /events/stream's requireTenantId() would just
+          reject the connection, matching this page's own graceful empty state for the same
+          role/reason, so LiveEvents is skipped rather than opening a connection that can
+          never succeed. */}
+      {session.role !== UserRole.SUPER_ADMIN && <LiveEvents />}
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Asset Feed</h1>
         <p className="text-sm text-muted-foreground">

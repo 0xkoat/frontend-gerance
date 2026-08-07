@@ -7,6 +7,7 @@ import { KpiCard } from "@/components/dashboard/kpi-card";
 import { SeverityBreakdown } from "@/components/dashboard/severity-breakdown";
 import { EventsByModule } from "@/components/dashboard/events-by-module";
 import { FeedTable } from "@/components/assets/feed-table";
+import { LiveEvents } from "@/components/security/live-events";
 import { isOpenFeedEntry } from "@/lib/asset-feed";
 import type { TenantSummary } from "@/components/tenants/tenants-table";
 import type { AssetFeedEntry } from "@/types/assets";
@@ -112,6 +113,7 @@ async function TenantOverview({ userId }: { userId: string }) {
 
   return (
     <div className="flex flex-col gap-6">
+      <LiveEvents />
       <div>
         <h1 className="text-xl font-semibold tracking-tight">
           Security Overview

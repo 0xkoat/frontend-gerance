@@ -81,6 +81,12 @@ src/
                                                              2026-08-07, all via
                                                              proxyToBackend() (Phase 2);
                                                              api/assets/feed added Phase 9
+    api/events/stream                                    — Phase 10 (2026-08-07): raw
+                                                             ReadableStream proxy for the
+                                                             backend's SSE endpoint, NOT via
+                                                             proxyToBackend() (that helper
+                                                             buffers via .json(), which would
+                                                             never resolve for a stream)
     icon.tsx                                             — generated favicon (next/og)
     not-found.tsx, error.tsx, global-error.tsx, loading.tsx  — see error.md's `unstable_retry`
                                                                 note below; not-found.tsx
@@ -106,7 +112,8 @@ src/
     security/    — cross-module shared row-action components, added Phase 2 (2026-08-07):
                    NextOnlyPagination, AssignmentControl, StatusTransitionMenu — every
                    module page in Phases 3-8 reuses these instead of rebuilding row actions
-                   per module
+                   per module. live-events.tsx's <LiveEvents /> added Phase 10 (2026-08-07):
+                   the EventSource client mounted on the dashboard and (dashboard)/assets
     vm/          — VM module (Phase 3, 2026-08-07): asset create form/row actions, vuln/asset
                    tables, VulnerabilityStatusMenu (VM-specific — full status enum, not the
                    shared StatusTransitionMenu's restricted transition set)
@@ -152,6 +159,9 @@ src/
     asset-feed.ts — isOpenFeedEntry() (source-aware terminal-status check, added Phase 9,
                     2026-08-07) and hrefForFeedEntry() (DFIR gets a real per-record deep
                     link, every other source links to its module's list page)
+    live-events.ts — classifyLiveEvent()/describeCreatedEvent()/severityOf(), added Phase 10
+                    (2026-08-07): the SSE frame discriminator the backend's own @Sse
+                    endpoint doesn't provide (see Phase 10's own checklist entry)
     severity.ts, nav.ts  — mock-data.ts deleted Phase 9 (2026-08-07), its last consumers
                     (the dashboard's severity/attack-source panels and alerts table) were
                     all replaced with real data in the same pass
@@ -359,6 +369,35 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-08-07, sixteenth pass — Phase 10, real-time SSE delivery): a
+streaming Route Handler (`src/app/api/events/stream/route.ts`) proxying the backend's `GET
+/events/stream` (a NestJS `@Sse` endpoint) — checked
+`node_modules/next/dist/docs/01-app/02-guides/streaming.md` before assuming this Next
+version's Route Handlers support a bare `new Response(stream)`, confirmed they do — and a
+new `<LiveEvents />` client component mounted on the dashboard and `(dashboard)/assets`.
+**Two real findings made while building it, neither anticipated in the plan text:** (1)
+NestJS's `@Sse` sends every frame through `EventSource`'s default `onmessage` with no
+`event:`/`type` field at all (verified against `backend/src/events/events.service.ts`), so
+a new `classifyLiveEvent()` helper (`src/lib/live-events.ts`) has to infer create/assign/
+status-changed/unassign/delete from which fields are present on each payload instead of a
+discriminator the backend never sends. (2) within that, `status_changed` and `unassigned`
+turned out to be the *same* payload shape on the wire (`RecordStatusChangedPayload`,
+confirmed against `backend/src/asset/asset.service.ts`) — genuinely indistinguishable from
+each other, not a gap in the classifier. Given that and the cost of hand-patching
+Server-Component-sourced table state, live updates are built as a debounced (500ms)
+`router.refresh()` on every classifiable frame — a real re-render against real backend
+data — rather than synthetic client-side row construction; only the "toast on a new
+critical event" behavior is built exactly as specified. Decision 3's Phase 10 revisit
+question (does a 15-minute access token matter for a long-lived SSE connection) is resolved
+as "no fix needed" — the backend's `@Sse` guard runs once at connect time, confirmed
+directly against the controller, so this isn't a gap to patch. Test suite grew from 243 to
+264 tests (`events-stream-route.test.ts`, `live-events-lib.test.ts`,
+`live-events.test.tsx` — the streaming route's non-streaming-specific behavior, the
+classifier's full decision table, and the client component against a mock `EventSource`,
+deliberately not a full live-stream test per the plan's own note that real streaming is
+better verified live); `tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all
+verified clean.
 
 **Recently completed** (2026-08-07, fifteenth pass — Phase 9, asset feed and dashboard
 integration): the last mock data in the app is gone. A new `(dashboard)/assets` page (`GET
@@ -661,17 +700,18 @@ real folder first) but not yet deleted — that's Phase 12's explicit job, along
 /assets/feed`) is wired to real data too, as of Phase 9 (2026-08-07)** —
 `(dashboard)/assets` (the full paginated/filterable feed) and the dashboard's own
 KPIs/breakdown panels/recent-activity table all consume it now; `src/lib/mock-data.ts` is
-deleted. **What's still not wired to real data: the SSE event stream (`GET
-/events/stream`)** — that's Phase 10 below. Full phased plan, decisions, and verified API
-contract are in the dedicated section below, "Backend to frontend adaptation plan
-(2026-08-06)". Do not re-derive the backend route list by hand when picking up Phase 10
-onward, the plan already has it verified against the actual controller source, re-verify
-only if the backend has changed since 2026-08-06 (or 2026-08-07's hardening note, already
-folded in).
+deleted. **The SSE event stream (`GET /events/stream`) is live too, as of Phase 10
+(2026-08-07)** — `<LiveEvents />` (`src/components/security/live-events.tsx`) drives a
+critical-event toast and a debounced live refresh on the dashboard and `(dashboard)/assets`.
+Full phased plan, decisions, and verified API contract are in the dedicated section below,
+"Backend to frontend adaptation plan (2026-08-06)". Do not re-derive the backend route list
+by hand when picking up Phase 11 onward, the plan already has it verified against the
+actual controller source, re-verify only if the backend has changed since 2026-08-06 (or
+2026-08-07's hardening note, already folded in).
 
 ## Testing
 
-42 files / 243 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
+43 files / 264 tests (`jest.config.ts`, `__tests__/`, `npm test`): `proxy.ts`'s full redirect
 matrix, every auth/user/tenant form's validation/success/error paths (incl.
 `RequestPasswordChangeForm`, added 2026-07-28), `UserRowActions`' four dialogs,
 `UsersTable`/`TenantAdminsTable`'s pending-reset badge/tint logic, `ResetAdminPasswordButton`,
@@ -694,7 +734,16 @@ Handler's auth/RBAC/filter-forwarding/error-normalization paths, plus `isOpenFee
 per-source terminal-status logic and `hrefForFeedEntry()`'s DFIR-vs-everything-else mapping;
 no dedicated component test for `FeedTable`/`EventsByModule`/`SeverityBreakdown`, same
 "read-only composition, no interactive logic of its own" precedent as Phase 5's
-`AlertsTable`/`LogsTable`), and — the gap called out below in earlier passes — every
+`AlertsTable`/`LogsTable`), Phase 10's real-time SSE delivery
+(`events-stream-route.test.ts` — the streaming Route Handler's auth guard, error
+passthrough, and a real-`ReadableStream` success path, deliberately not a full live-stream
+test per the plan's own note that byte-for-byte streaming is better verified live;
+`live-events-lib.test.ts` — `classifyLiveEvent()`'s full decision table plus
+`describeCreatedEvent()`/`severityOf()`; `live-events.test.tsx` — the `<LiveEvents />`
+client component against a small mock `EventSource`, covering toast-only-on-critical,
+debounced-refresh-on-every-classifiable-frame, burst-coalescing, ignoring unrecognized
+frames, and connection cleanup on unmount, added 2026-08-07), and — the gap called out below
+in earlier passes — every
 Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
 cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
 unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
@@ -1335,34 +1384,92 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       still untouched). Confirmed via the build's route table that `/assets` and
       `/api/assets/feed` both registered correctly.
 
-## Phase 10, real-time delivery (SSE)
+## Phase 10, real-time delivery (SSE) — DONE 2026-08-07
 
-- [ ] `src/app/api/events/stream/route.ts`: a Route Handler that server-side fetches the
-      backend's `GET /events/stream` with the caller's `Authorization` header attached (via
-      `backendFetchAuthed`-style token access) and streams the response body back to the
-      browser. Check `node_modules/next/dist/docs/` for this Next version's actual streaming
-      Route Handler semantics before assuming standard `Response` streaming behavior applies
-      unmodified, this is exactly the kind of API this project has already been burned by
-      trusting prior knowledge on (`middleware.ts` to `proxy.ts`, `reset` to
-      `unstable_retry`). This exact follow-up is already flagged from the backend side too,
-      see `backend/CLAUDE.md`'s Phase 8 entry.
-- [ ] A client component wrapping `new EventSource("/api/events/stream")`, mounted first on
-      the Security Overview dashboard and the new asset feed page only, per decision in this
-      phase, not wired into every module list page in the same pass. Live behavior: a
-      `sonner` toast on a new critical-severity event, live-prepend on the feed/dashboard
-      list, live status-pill updates on `*.assigned`/`*.status_changed`/`*.unassigned`
-      frames for whichever records are currently rendered.
-- [ ] No tenant-filtering logic needed client-side, `EventsService.streamForTenant` already
-      filters server-side per the backend's own design.
-- [ ] Revisit decision 3 above (lazy-only refresh) once this phase is built, a long-lived
-      SSE connection plus a 15 minute access token used only for the initial proxy request
-      means the underlying HTTP connection outlives the token that authorized it, confirm
-      whether that matters given how the backend's SSE auth actually works (checked once at
-      connection time, not per-frame) before assuming it needs a fix.
-- [ ] Tests: the Route Handler's streaming behavior is awkward to unit test meaningfully,
-      a live manual verification (matching the backend's own SSE verification approach, see
-      `backend/CLAUDE.md`'s Phase 8 entry) is likely more honest here than a mocked test that
-      does not exercise real streaming.
+- [x] `src/app/api/events/stream/route.ts`: proxies the backend's `GET /events/stream`
+      (a NestJS `@Sse` endpoint) straight through. Checked
+      `node_modules/next/dist/docs/01-app/02-guides/streaming.md`'s "Streaming in Route
+      Handlers" section before assuming this Next version's Route Handlers support a bare
+      `new Response(stream)` — confirmed they do, no new API needed. Deliberately **not**
+      built on `proxyToBackend()` — that helper calls `.json()` on the backend response,
+      which would buffer an infinite stream forever before ever forwarding a byte. Instead
+      forwards `backendFetchAuthed("/events/stream").body` (already a `ReadableStream`, no
+      manual `TextEncoder`/chunk loop needed) with `Content-Type: text/event-stream`,
+      `Cache-Control: no-cache, no-transform`, and `X-Accel-Buffering: no`.
+- [x] `src/components/security/live-events.tsx`'s `<LiveEvents />`: a client component
+      wrapping `new EventSource("/api/events/stream", { withCredentials: true })`, mounted
+      on the Security Overview dashboard (`(dashboard)/dashboard`'s `TenantOverview` only —
+      not `SuperAdminOverview`, which has no tenant to stream events for) and
+      `(dashboard)/assets` (guarded there with an explicit `role !== SUPER_ADMIN` check,
+      since that page has no upstream branch to rely on the way the dashboard does), per
+      decision in this phase, not wired into every module list page in the same pass.
+- [x] **Real finding made while building this, not anticipated in the original plan text:**
+      NestJS's `@Sse` maps every event to `{ data: event }` with no `event:`/`type` field
+      set (verified directly against `backend/src/events/events.service.ts`), so
+      `EventSource` always delivers frames through its default `onmessage`, never a
+      named-event listener — there is **no discriminator field on the wire** telling the
+      frontend whether a frame is a create/assign/status-change/unassign/delete. Built
+      `src/lib/live-events.ts`'s `classifyLiveEvent()` to infer the kind from which fields
+      are present instead (verified against every payload shape in
+      `backend/src/common/security-module/types.ts`): `assignedToUserId` (string) →
+      `assigned`; `recordId` + `status` → `status_or_unassigned`; `recordId` with no
+      `status` → `deleted`; `severity` with neither of the above → `created`. **A second,
+      narrower finding inside that:** `status_changed` and `unassigned` events are
+      genuinely indistinguishable from each other on the wire — both are the exact same
+      `RecordStatusChangedPayload` shape (see `backend/src/asset/asset.service.ts`'s own
+      comment on why one handler per module, not one payload per event name) — so the
+      plan's "live status-pill updates on `*.assigned`/`*.status_changed`/`*.unassigned`
+      frames" is only partially buildable as three *distinct* behaviors; `assigned` is
+      distinguishable, the other two are collapsed into one `status_or_unassigned` kind on
+      purpose, not a bug.
+- [x] **Live behavior, built as a deliberate simplification of the plan's literal wording,
+      documented in `live-events.tsx`'s own comment:** rather than hand-patching individual
+      rows in currently-rendered tables (`FeedTable` and, eventually, the six module
+      tables — all Server-Component-sourced props today, not client state a delta could
+      merge into without a much larger refactor), every classifiable frame triggers a
+      **debounced `router.refresh()`** (500ms, coalescing bursts into one call) — a real
+      re-render of the current route's Server Component against real backend data, not a
+      synthetic row built from a partial SSE payload with no real `AssetFeedEntry.id` to key
+      on. This achieves live-prepend/live-status-update in effect (the list updates within
+      half a second of a real event, using real data every time) with far less risk of
+      drift than hand-maintained client state — revisit only if `router.refresh()`'s
+      full-tree re-render is ever a measured cost problem, not preemptively. The one
+      behavior built exactly as specified: a `sonner` toast (`toast.error`, matching the
+      severity color convention `AssignmentControl` already uses for its own error toasts)
+      fires only on a new **critical**-severity `*.created` event, using a new
+      `describeCreatedEvent()` helper that mirrors `AssetService`'s own per-source summary
+      strings by hand (same hand-mirroring tradeoff as every other backend-shape mirror in
+      this codebase).
+- [x] No tenant-filtering logic needed client-side, confirmed —
+      `EventsService.streamForTenant` filters server-side by design, and the browser's
+      session cookie (same-origin, sent automatically to `/api/events/stream`) is what ties
+      the backend connection to the right tenant in the first place.
+- [x] **Decision 3 revisited, resolved as "no fix needed," not silently left open:** a
+      long-lived open `EventSource` connection does keep receiving events past the access
+      token's own 15-minute expiry, since the backend's `@Sse` guard chain runs once at
+      connect time, not per emitted `MessageEvent` (confirmed directly against
+      `backend/src/events/events.controller.ts` — no per-frame auth mechanism exists to
+      revisit). This is a property of the backend's own guard model, not something the
+      frontend can or should work around; documented in the Route Handler's own comment
+      rather than left as an implicit assumption. The moment the connection actually drops
+      for any reason (network blip, tab backgrounding, browser throttling), `EventSource`'s
+      native reconnect hits this Route Handler fresh, and `backendFetchAuthed`'s existing
+      lazy-refresh-on-401 covers a genuinely expired session at that point — no proactive
+      client-side refresh timer was needed after all.
+- [x] Tests: per the plan's own note that the Route Handler's real byte-streaming behavior
+      is better verified live than faked with a mock, `events-stream-route.test.ts` covers
+      only what's meaningfully testable without a live connection — the auth guard, the
+      error-passthrough path, and (using a real `ReadableStream`, a genuine Node global, not
+      a stand-in object) that a successful backend response's body and headers are forwarded
+      correctly. `live-events-lib.test.ts` covers `classifyLiveEvent()`'s full decision
+      table and `describeCreatedEvent()`/`severityOf()`. `live-events.test.tsx` covers the
+      client component itself against a small mock `EventSource` class (jsdom has no real
+      one) — toast-only-on-critical, debounced-refresh-on-every-classifiable-frame,
+      burst-coalescing, ignoring unrecognized frames, and connection cleanup on unmount. 21
+      new tests. Full suite: 264 tests (was 243), all green; `tsc --noEmit`, `eslint`,
+      `prettier --check`, and `next build` all clean (same one pre-existing, unrelated
+      `eslint` finding, still untouched). Confirmed via the build's route table that
+      `/api/events/stream` registered correctly as a dynamic route.
 
 ## Phase 11, tenant module activation UI (Super Admin)
 
