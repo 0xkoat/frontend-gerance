@@ -26,6 +26,7 @@ export default async function EdrEndpointsPage() {
         </div>
         <Button
           variant="outline"
+          nativeButton={false}
           render={<Link href="/edr">Back to detections</Link>}
         />
       </div>

@@ -12,6 +12,7 @@ import {
   Rss,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/brand-mark";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { MODULES } from "@/lib/nav";
@@ -41,14 +42,15 @@ export function SidebarNav({
     router.refresh();
   }
 
+  // Super Admin isn't scoped to any tenant, so the six security-module
+  // links and the Asset Feed — all tenant data — don't apply to that role
+  // at all, not just "empty for them".
   const isTenantScoped = role !== UserRole.SUPER_ADMIN;
 
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
       <div className="flex items-center gap-2 px-4 py-4">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#6c63ff] text-sm font-bold text-white">
-          S
-        </span>
+        <BrandMark className="h-7 w-7 shrink-0" />
         <span className="text-sm font-semibold tracking-wide">
           SEC<span className="text-muted-foreground">OPS</span>
         </span>
@@ -74,6 +76,14 @@ export function SidebarNav({
               Asset Feed
             </NavLink>
           )}
+          {/* hasPendingPasswordRequest drives the red dot for
+              GET /users/me/pending-password-requests — a single designated
+              recipient per tenant (the first-created Admin), or every Super
+              Admin when that first Admin's own request is the one pending.
+              See backend/CLAUDE.md's provisioning rules for the exact
+              targeting logic; this component just renders whatever the
+              caller (the dashboard layout, which polls that endpoint)
+              passed in. */}
           {role === UserRole.ADMIN && (
             <NavLink
               href="/users"

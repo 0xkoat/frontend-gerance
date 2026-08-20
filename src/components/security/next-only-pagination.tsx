@@ -26,6 +26,7 @@ export function NextOnlyPagination({
         <Button
           variant="outline"
           size="sm"
+          nativeButton={false}
           render={<Link href={buildHref(page - 1)}>Previous</Link>}
         />
       )}
@@ -36,6 +37,7 @@ export function NextOnlyPagination({
         <Button
           variant="outline"
           size="sm"
+          nativeButton={false}
           render={<Link href={buildHref(page + 1)}>Next</Link>}
         />
       ) : (

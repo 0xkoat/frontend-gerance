@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LoginForm } from "@/components/auth/login-form";
+import { BrandMark } from "@/components/brand-mark";
 
 const STATS = [
   { value: "6", label: "Modules" },
@@ -21,9 +22,7 @@ export default function LoginPage() {
         />
 
         <div className="relative flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#6c63ff] text-sm font-bold text-white">
-            S
-          </span>
+          <BrandMark className="h-7 w-7 shrink-0" />
           <span className="text-sm font-semibold tracking-wide">
             SEC<span className="text-white/50">OPS</span>
           </span>
@@ -63,9 +62,7 @@ export default function LoginPage() {
       <section className="flex flex-1 items-center justify-center bg-background p-6">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex items-center gap-2 lg:hidden">
-            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-[#6c63ff] text-sm font-bold text-white">
-              S
-            </span>
+            <BrandMark className="h-7 w-7 shrink-0" />
             <span className="text-sm font-semibold tracking-wide">
               SEC<span className="text-muted-foreground">OPS</span>
             </span>

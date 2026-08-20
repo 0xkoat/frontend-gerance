@@ -25,6 +25,7 @@ export default async function VmAssetsPage() {
         </div>
         <Button
           variant="outline"
+          nativeButton={false}
           render={<Link href="/vm">Back to vulnerabilities</Link>}
         />
       </div>

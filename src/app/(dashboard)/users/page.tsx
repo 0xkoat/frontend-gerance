@@ -62,6 +62,7 @@ export default async function UsersPage({
                   <Button
                     variant="outline"
                     size="sm"
+                    nativeButton={false}
                     render={<Link href={`/users?page=${page - 1}`}>Previous</Link>}
                   />
                 )}
@@ -76,6 +77,7 @@ export default async function UsersPage({
                   <Button
                     variant="outline"
                     size="sm"
+                    nativeButton={false}
                     render={<Link href={`/users?page=${page + 1}`}>Next</Link>}
                   />
                 )}

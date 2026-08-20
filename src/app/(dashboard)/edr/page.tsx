@@ -87,6 +87,7 @@ export default async function EdrPage({
         </div>
         <Button
           variant="outline"
+          nativeButton={false}
           render={<Link href="/edr/endpoints">Manage endpoints</Link>}
         />
       </div>
@@ -125,6 +126,7 @@ export default async function EdrPage({
               <Button
                 size="sm"
                 variant="ghost"
+                nativeButton={false}
                 render={<Link href="/edr">Clear filters</Link>}
               />
             )}

@@ -9,13 +9,17 @@ counterpart, kept in sync by hand as the project develops. For the full narrativ
 development log (chronological, with rationale — mirrors `backend/docs/
 internship-report-backend.md`), see `docs/internship-report-frontend.md`.
 
-# Stack (as actually installed, 2026-07-16 — re-verify against package.json before trusting)
+# Stack (as actually installed, 2026-08-19 — re-verify against package.json before trusting)
 
-- Next.js 16.2.10, App Router, `src/` directory, Turbopack
-- React 19.2.4, TypeScript 5.9.3 — **note:** the architecture spec PDF calls for
-  TypeScript 6.0.3; what actually installs via `create-next-app`'s `"typescript": "^5"` is
-  5.9.3. Unresolved discrepancy — check `npm view typescript versions` before assuming the
-  spec is stale or that 6.x should be force-installed.
+- Next.js 16.2.12, App Router, `src/` directory, Turbopack — bumped from 16.2.10 on 2026-08-19
+  to close nine of the framework's own direct CVEs (see "Known gaps" below).
+- React 19.2.4, TypeScript 6.0.3 — matches the architecture spec PDF and the backend
+  (`backend/package.json` was already pinned to `^6.0.3`; only the frontend, via
+  `create-next-app`'s `"typescript": "^5"`, had drifted to 5.9.3). Resolved 2026-08-19:
+  `npm view typescript versions` confirmed 6.0.3 is a real, stable release (not a beta/dev
+  tag — 6.0.0-beta → 6.0.1-rc → 6.0.2 → 6.0.3), and `typescript-eslint@8.64.0`'s peer range
+  (`>=4.8.4 <6.1.0`) covers it. Installed and re-verified (`tsc --noEmit`, full test suite,
+  `next build`, live smoke test all clean) rather than left as an open question.
 - Tailwind CSS v4 (CSS-first config via `@theme` in `src/app/globals.css` — no
   `tailwind.config.ts`)
 - shadcn/ui, `"style": "base-nova"` preset — **built on `@base-ui/react`, not Radix UI.**
@@ -100,6 +104,11 @@ src/
                                                                 dynamic app-wide otherwise)
     layout.tsx, page.tsx, globals.css
   components/
+    brand-mark.tsx — <BrandMark />, added 2026-08-19: the hexagon-plus-pulse-line SVG mark,
+                   shared by sidebar-nav.tsx and login/page.tsx (both previously duplicated
+                   the same inline "S"-in-a-square markup). Kept in visual sync by eye with
+                   src/app/icon.tsx (the favicon — a separate next/og ImageResponse render
+                   path that can't import a regular component)
     ui/          — shadcn-generated, don't hand-edit the primitives casually
     auth/        — login/forgot-password/change-password forms
     dashboard/   — sidebar nav, KPI cards, severity + events-by-module breakdown panels,
@@ -181,6 +190,15 @@ src/
                     (2026-08-07): enums, record types, and each module's
                     *_TRANSITIONABLE_STATUSES, hand-matched to backend/prisma/schema.prisma
   proxy.ts       — optimistic route protection (see below)
+e2e/             — Playwright, added 2026-08-19: real Chromium against the real running
+                   stack (frontend + backend + seeded Postgres), not mocked, unlike
+                   __tests__/. `npm run test:e2e`; see e2e/README.md and the "Testing"
+                   backlog entry below for the full account, including two real bugs found
+                   building it (browser.newContext() inherits storageState unless cleared;
+                   the backend's shared auth-controller rate limit needs deliberate pacing)
+playwright.config.ts — testDir: "./e2e", workers: 1 (shared demo-tenant data — parallel
+                   runs would race each other's mutations), 90s per-test timeout (paced
+                   auth calls can legitimately take a while, see e2e/helpers.ts)
 __tests__/       — Jest + RTL, root-level (not under src/) so it's never mistaken for a route
 test-utils.ts    — shared mockJsonResponse()/fakeToken() helpers, also root-level: anything
                    placed inside
@@ -273,7 +291,7 @@ which is why the browser attaches it there automatically):
    original plan: `next/headers`' `cookies().set()` throws when called during Server
    Component rendering (Next's own docs, "Understanding Cookie Behavior in Server
    Components"), and the danger isn't just the throw — the backend rotates (invalidates) the
-   *old* refresh token the instant it receives a `POST /auth/refresh` request, regardless of
+   _old_ refresh token the instant it receives a `POST /auth/refresh` request, regardless of
    whether the frontend can persist the new one afterward. A Server Component that triggered
    a refresh it couldn't persist would leave the browser holding an already-dead refresh
    token, which would trip the backend's reuse-detection and kill the whole token family on
@@ -331,31 +349,47 @@ swapping the cookie strategy.
 - **Super Admin has no `/users/me`-equivalent.** `GET /users/me` throws
   `ForbiddenException` for accounts with no `tenantId`. The dashboard layout
   (`src/app/(dashboard)/layout.tsx`) falls back to JWT claims only for that role — there's
-  currently no backend endpoint for a Super Admin to fetch their own profile. (Tenant data
-  itself is real now — `src/app/(dashboard)/tenants/page.tsx` + `src/app/api/tenants/`
-  wire up `GET`/`POST /tenants`, and the dashboard's `SuperAdminOverview` pulls the same
-  real list instead of mock data. Tenant _deletion_ — `DELETE /tenants/:id` exists on the
-  backend — has no UI yet.)
+  currently no backend endpoint for a Super Admin to fetch their own profile. Tenant data
+  itself is real (`src/app/(dashboard)/tenants/page.tsx` + `src/app/api/tenants/` wire up
+  `GET`/`POST /tenants`, and the dashboard's `SuperAdminOverview` pulls the same real list
+  instead of mock data), including deletion (`DeleteTenantButton`, confirm-dialog-gated)
+  and, since Phase 11 (2026-08-07), rename and the full `TenantModule` activation surface —
+  **found stale and corrected during Phase 13's verification pass (2026-08-08):** this
+  bullet's parenthetical had claimed "tenant deletion has no UI yet" long after
+  `DeleteTenantButton` was actually built (2026-07-16's "second pass") — a real, if minor,
+  drift this file's own "update it as items land" rule was supposed to prevent, caught only
+  now by Phase 13's dedicated re-read rather than any earlier pass.
 - ~~**Dashboard content is mock data**~~ **No longer true, this bullet is stale.** Fixed in
   Phase 9 (2026-08-07, see the adaptation plan below) — the dashboard's KPIs, both
   breakdown panels, and its recent-activity table are all real `GET /assets/feed` data now,
   and `src/lib/mock-data.ts` itself has been deleted. Left struck through rather than
   removed so the drift is visible, matching this file's own existing convention (see the
-  "Admin can list/create users..." bullet further down). The `[module]/page.tsx` stub is
-  still stale in the way this bullet used to describe — that's Phase 12's job, unchanged.
-- **No row-level actions on the alerts table** (assign/escalate/resolve) — intentionally
-  not faked with disabled buttons. See the adaptation plan below, this is now buildable for
-  real (SIEM's assign/status routes exist), no longer blocked on a missing backend module.
+  "Admin can list/create users..." bullet further down). The `[module]/page.tsx` stub this
+  bullet used to also point at as stale is deleted too now (Phase 12, 2026-08-07).
+- ~~**No row-level actions on the alerts table**~~ **No longer true — the premise itself is
+  gone.** The mock alerts table this bullet described was replaced entirely by real SIEM
+  data with real `AssignmentControl`/`StatusTransitionMenu` row actions back in Phase 5
+  (2026-08-07); every module's list page has had real row actions since. Found stale during
+  Phase 13's verification pass, left struck through per this file's own convention.
 - ~~Admin can list/create users but not yet edit/delete/reset-password/change-role from
   the UI~~ **No longer true, this bullet was stale.** The full action set landed the same
   day this file's "Known gaps" section was last written (see the "Third pass" entry under
   "Recently completed" below) and this bullet was never removed afterward, contradicting
   that entry. Left struck through rather than deleted so the drift is visible; corrected
   2026-08-06 while auditing this file against the backend for the adaptation plan below.
-- **`npm audit` reports a moderate PostCSS advisory** — it's a transitive dependency
-  _inside_ `next` itself; `npm audit fix --force` would downgrade Next.js to a `9.x`
-  canary to "fix" it, which is worse than the advisory. Left as an accepted, low-relevance
-  (build-time only, not exploitable via this app's actual usage) risk.
+- **`npm audit`, resolved 2026-08-19**: the prior note here ("a moderate PostCSS advisory")
+  was itself stale — a live audit found `next@16.2.10` carrying nine of its own direct
+  high/moderate CVEs (middleware/proxy bypass, Server Actions DoS and SSRF, cache confusion,
+  an Image Optimization DoS), all fixed upstream in `16.2.11`. Bumped to `16.2.12` (latest
+  patch at the time), re-verified clean (`tsc --noEmit`, full 289-test suite, `next build`,
+  and a live browser smoke test all pass). What's left after that fix is genuinely the
+  original, narrower shape of this note: `next`'s own bundled `postcss`/`sharp` copies
+  (build-time only, no independent version to bump without Next.js itself updating them) plus
+  a handful of advisories in `eslint-config-next`/`eslint`/`jest`/`shadcn`'s own dependency
+  trees — traced individually via `npm ls <pkg>`, every one confirmed devDependency-only,
+  never reachable from the deployed app's runtime bundle. Left as an accepted, low-relevance
+  risk, same reasoning as before — just don't assume "PostCSS, moderate" is still the whole
+  picture without re-running `npm audit` first.
 - Root layout hard-codes the `dark` class instead of wiring up a `next-themes` toggle — the
   UI spec is a dedicated dark console with no light-mode mockup or toggle control anywhere
   in Figures 1-4. `next-themes` is installed (pulled in by `shadcn init`) if a real toggle
@@ -363,10 +397,22 @@ swapping the cookie strategy.
 - A first Jest + RTL test suite exists (`npm test`) but is far smaller than the backend's
   Jest + Supertest e2e coverage — see "Testing" in the functionality backlog below for
   exactly what's covered and what isn't.
-- Favicon is generated (`src/app/icon.tsx`, matches the sidebar's brand mark), not a
-  designed brand asset — fine as a placeholder, not final branding.
+- ~~Favicon is generated... not a designed brand asset~~ **No longer true, fixed
+  2026-08-19.** The bold-letter-in-a-rounded-square mark was a genuine placeholder (a
+  generic AI-default shape). Replaced with a hexagon-plus-monitoring-pulse mark — same
+  brand violet (`#6c63ff`, unchanged), same silhouette family as the app's own hexagon
+  motif (the login page's "6 MODULES" stat), carrying a pulse/EKG line instead of a
+  literal "S" since the wordmark next to it already spells the name out. Defined once as
+  `src/components/brand-mark.tsx` (a real `<svg>`, used in-app by `sidebar-nav.tsx` and
+  `login/page.tsx`, both places the old inline "S" span was duplicated) and separately as
+  `src/app/icon.tsx` (the browser-tab favicon, via `next/og`'s `ImageResponse` — a
+  different render path that can't share the component directly, kept in visual sync by
+  eye). Verified live at both the actual favicon size and enlarged, `tsc`/`eslint`/full
+  test suite/`next build` all clean, no test depended on the old literal "S" text (a
+  targeted grep of `__tests__/` for it came back empty before assuming so). Left struck
+  through rather than deleted per this file's own convention.
 - **Every module's `query()` (VM, EDR, SIEM, CTI, SOAR, DFIR) and `AssetService.
-  getUnifiedFeed` return a bare array, with no total count**, unlike `GET /users` which
+getUnifiedFeed` return a bare array, with no total count**, unlike `GET /users` which
   returns `{ users, total, page, pageSize }`. Verified directly against
   `backend/src/**/*.service.ts`: only `UsersService.findAllForTenant` runs a `$transaction`
   alongside a `count()`. This is a real backend limitation, not something the frontend can
@@ -379,6 +425,65 @@ Full narrative of what's done and why lives in `docs/internship-report-frontend.
 section is the working checklist — organized by area, not just priority order, so it's easy
 to see what's missing in a given part of the app. Update it as items land; don't let it
 drift from reality.
+
+**Recently completed** (2026-08-08, twentieth pass — `/code-review` findings, fixed): a
+full-branch `/code-review` run against the nineteenth pass's diff (below) returned six
+findings; all six addressed rather than triaged away. Two were real doc-accuracy bugs in
+CLAUDE.md's own nineteenth-pass entry, caught within a day of being written: its claim that
+`prettier --check` was down to "exactly the same 9 pre-existing unformatted `src/` files"
+was false the moment it was written — `docs/superpowers/specs/2026-07-28-password-change-
+request-flow-design.md` had just been un-gitignored by that same pass and was never actually
+run through `prettier --write`, making the true count 10, not 9. Fixed by formatting the
+spec file (asterisk-emphasis → underscore, matching the rest of the repo's Markdown
+convention) rather than by softening the claim — the count is genuinely 9 again now. The
+other four were real test-suite hygiene findings: a byte-for-byte-identical `setSession()`
+cookie-store mock (`get`/`set`/`delete` stub plus the `next/headers` wiring) was copy-pasted
+across 11 Route Handler test files, and 9 of those 11 hardcoded the literal string
+`"secops_token"` instead of importing `SESSION_COOKIE` from `src/lib/session.ts` the way the
+other 2 already did — a rename of that constant would have silently broken 9 files for a
+confusing, unrelated-looking reason. Extracted the store-building logic to a new
+`setSessionCookie(mockedCookies, token)` in `test-utils.ts` (the `jest.mock("next/headers",
+...)` registration itself has to stay in each test file — Jest's hoisting only rewrites
+`jest.mock` calls it finds literally in the file being compiled, confirmed against
+`babel-plugin-jest-hoist`'s actual behavior before assuming a full extraction was possible),
+imported and used by all 11 files now. Also collapsed `tenants-routes.test.ts`'s two
+overlapping request-builders (`req()` was a hardcoded-to-POST duplicate of `reqMethod()` in
+everything but name) into one — `req(body)` is now `reqMethod("POST", body)`. The sixth
+finding (the `.gitignore` fix has no CI/pre-commit guard against the same directories being
+re-ignored later) is a real, already-tracked gap — see "No CI" in Polish/infra below, left
+there rather than duplicated. Full suite re-verified after every change: 289/289 tests
+(unchanged — this was a refactor of test infrastructure, not new coverage),
+`tsc --noEmit`/`eslint --max-warnings=0`/`next build` all clean, `prettier --check` back to
+the true 9-file baseline this claim now correctly describes.
+
+**Recently completed** (2026-08-08, nineteenth pass — Phase 13, final verification, plus a
+follow-up full frontend-backend adaptation audit requested directly): Phase 13 itself found
+and fixed a real gitignore bug (`__tests__/`, `__mocks__/`, `docs/` had never been tracked in
+git all session, contradicting two earlier passes' claims otherwise — see Phase 13's own
+entry below for the full account) and two stale route-inventory claims. The follow-up audit
+went well beyond re-confirming Phase 13's route walk: every mutation DTO in
+`backend/src/**/dto/*.ts` was diffed field-by-field against its `src/lib/validations/*.ts`
+zod counterpart (100% match, no drift, across all thirteen DTOs checked), every Prisma model
+backing the six modules was diffed field-by-field against its `src/types/*.ts` interface
+(100% match), and — since the request specifically asked whether the app matches the
+backend's demo data — `backend/prisma/seed-modules.ts` (the `npm run seed:demo` dataset,
+5 tenants/~3500 rows) was read in full. **Found one real bug there**, backend-side, not
+frontend: the demo script's `AssetFeedEntry` rows for EDR/SIEM/VM/DFIR never carried over
+each source record's own `status`/`assignedToUserId` (silently `null` for all of them),
+unlike what the real `AssetService` listeners this script mirrors always set — meaning the
+Asset Feed page and dashboard KPIs (`isOpenFeedEntry`, "assigned to me") would show every
+demo row as unassigned/closed even though the underlying VM/EDR/SIEM/DFIR records genuinely
+have varied assign/status state seeded on them. Fixed directly in
+`backend/prisma/seed-modules.ts` (see `backend/CLAUDE.md`'s Phase 10 entry for the full
+account) — the six module pages themselves were never affected, only the cross-module feed
+view. Also ran the backend's full test suite for the first time this session (694 tests: 507
+unit + 187 e2e, all green — the e2e run needed `--runInBand`, a full-parallel run hit false
+timeouts from `argon2.hash` CPU contention across 11 workers in this sandbox, not a real
+failure) and re-read the backend's three most recent commits' diffs directly to confirm
+nothing shipped since Phase 13's last check — confirmed backend-internal only (refresh-token
+race-condition hardening, atomic lockout counter, CTI ingest concurrency), no frontend-visible
+change. No frontend code changed in this pass — 289/289 tests, `tsc`/`eslint`/`prettier`/
+`next build` all reverified clean regardless, since the standard was "verify, don't assume."
 
 **Recently completed** (2026-08-07, eighteenth pass — Phase 12, RBAC and nav polish): mostly
 a confirmation pass, not a fix pass — audited all six module pages plus the Phase 9 asset
@@ -432,7 +537,7 @@ NestJS's `@Sse` sends every frame through `EventSource`'s default `onmessage` wi
 a new `classifyLiveEvent()` helper (`src/lib/live-events.ts`) has to infer create/assign/
 status-changed/unassign/delete from which fields are present on each payload instead of a
 discriminator the backend never sends. (2) within that, `status_changed` and `unassigned`
-turned out to be the *same* payload shape on the wire (`RecordStatusChangedPayload`,
+turned out to be the _same_ payload shape on the wire (`RecordStatusChangedPayload`,
 confirmed against `backend/src/asset/asset.service.ts`) — genuinely indistinguishable from
 each other, not a gap in the classifier. Given that and the cost of hand-patching
 Server-Component-sourced table state, live updates are built as a debounced (500ms)
@@ -798,44 +903,93 @@ in earlier passes — every
 Route Handler under `/api/users/**` and `/api/tenants/**`, using a `jest.mock("next/headers")`
 cookie-store mock plus `fakeToken()` (in `test-utils.ts`) to build a syntactically valid
 unsigned JWT for the session cookie (see `src/lib/jwt.ts`'s doc comment for why an unsigned
-token is safe to use in tests — this file never verifies signatures either). **`__tests__/`
-is currently
-`.gitignore`d** — these tests run and pass locally but aren't tracked in git; a fresh clone
-or CI would see zero test files. Found 2026-07-28, not yet fixed. Still missing, roughly in
-order of value:
+token is safe to use in tests — this file never verifies signatures either).
+**`__tests__/`, `__mocks__/`, and `docs/` were all gitignored — fixed 2026-08-08, Phase
+13's verification pass.** First found 2026-07-28 (as `__tests__/` alone), left unfixed
+across every subsequent pass that mentioned it (including, incorrectly, one that claimed it
+was "closed" — see the internship report's own Phase 13 entry for that correction), and
+only actually fixed now: real `git ls-files`/`git check-ignore` verification (not assumed)
+showed all three directories had zero tracked files and zero git history the entire time,
+meaning every test-count claim in this section, and every `docs/internship-report-
+frontend.md` narrative update made all session, described files that were never once
+committed. `.gitignore`'s `__mocks__`/`__tests__`/`docs` lines are now removed; nothing
+sensitive found in `docs/` before doing so (checked directly, not assumed — the one
+`JWT_SECRET` mention there is prose naming the env var, not a value). **Not staged or
+committed by this session** — per this project's own "commit only when asked" convention,
+that's the user's call; flagged explicitly rather than silently `git add`-ed. Still missing,
+roughly in order of value:
 
-- [ ] Fix `__tests__/` being gitignored (see above) — probably the single highest-value item
-      on this list now, since it makes every count in this section describe tests nobody but
-      the person who wrote them can actually run.
-- [ ] No e2e/Playwright setup — everything above is unit/component-level (Jest + RTL) only.
-      The live curl-based smoke tests done this session (internship report §3.8) aren't
-      automated/regression-proof; a Playwright suite against a real backend would be the
-      next step up.
+- [x] **Playwright e2e suite — done 2026-08-19.** `frontend/e2e/` (17 tests, `npm run
+      test:e2e`), real Chromium against the real dev stack (frontend + backend + seeded
+      Postgres) — not mocked, the genuine "next step up" from the Jest suite's mocked
+      Route Handlers. Covers login/logout/forgot-password, RBAC (Viewer read-only, Analyst
+      self-assign-only), full Super Admin tenant CRUD including the forced-first-login
+      redirect, full Admin user CRUD including reset-forces-change-again, and one real
+      mutation per module (SIEM assign+escalate, VM status lifecycle, CTI IOC, SOAR
+      playbook, DFIR detail). Auth reuses a `storageState` per role (`e2e/auth.setup.ts`)
+      rather than logging in fresh in every test — not just a speed optimization: found
+      live that `AuthController`'s 5-requests/60s throttle (shared across login/refresh/
+      logout/forgot-password) blocks the *entire* controller for a full 60s once tripped,
+      and a naive one-login-per-test suite trips it almost immediately. `e2e/helpers.ts`'s
+      `paceAuthCall()` doc comment has the full account, including two subtler bugs found
+      chasing this down and fixed along the way: `browser.newContext()` silently inherits
+      the calling test's `storageState` unless explicitly cleared (a "isolated" second
+      login context wasn't isolated at all until this was found), and `dependencies:
+      ["setup"]` gives the setup/chromium projects separate worker processes, so an
+      in-memory rate-limit timestamp had to become a shared file instead. `backend/prisma/
+      seed-modules.ts` gained `faker.seed(20260819)` the same day specifically so this
+      suite's fixtures (`e2e/fixtures/accounts.ts`) could hardcode real seeded identities —
+      see that file's own CLAUDE.md entry. Verified reliable, not just "it passed once":
+      two consecutive full runs, 17/17 both times, ~2.9 minutes each, database left in the
+      same clean 5-tenant/40-user state it started in either way (every test cleans up its
+      own ephemeral tenant/IOC/playbook/user in a `finally` block).
 - [ ] Jest's default per-test timeout was raised to 15s (`jest.config.ts`) after observing
       real flakiness under WSL2 CPU contention when the full suite runs in parallel workers
       (a file that takes ~2s in isolation exceeded 5s under load, and a killed-mid-test
       `userEvent.type` call leaked keystrokes into the next test). Worth revisiting if the
       suite grows large enough that 15s stops being enough headroom, or if this turns out to
       be WSL2-specific and CI runs on different infrastructure.
-- [ ] Once the adaptation plan below lands, the test count needs to grow proportionally.
-      Forty-plus new backend routes across six modules plus the asset feed, each needing at
-      minimum a Route Handler success/error/RBAC test, would roughly double or triple the
-      current suite on its own, before counting form and row-action component tests. Track
-      this as a real, sized cost, not an afterthought per phase.
+- ~~Once the adaptation plan below lands, the test count needs to grow proportionally~~
+  **Done — the adaptation plan itself is complete as of Phase 13 (2026-08-08).** The
+  predicted "double or triple" happened: 110 tests before Phase 1 started, 289 now. Left
+  struck through rather than deleted per this file's own convention.
+
+## Platform readiness (2026-08-19)
+
+The frontend is functionally complete and live-tested against a real seeded backend, not
+just built against mocks: every page wired to real data since the adaptation plan finished
+(Phase 13, 2026-08-08), the favicon/brand mark replaced with a designed asset, the
+TypeScript 6.0.3 spec/installed mismatch resolved, and a real Playwright E2E suite added on
+top of the 289-test Jest/RTL suite (`e2e/`, covering auth, RBAC, tenant/user CRUD, and all
+six security modules end-to-end through the real backend). A full manual QA pass through the
+browser (login/lockout, every module's UI, the orchestration chain, live SSE updates via the
+dashboard/asset feed, RBAC across all 4 roles) confirmed everything works as built. `tsc
+--noEmit`, `eslint --max-warnings=0`, `prettier --check`, `next build`, and the full test
+suite are all clean.
+
+What's left is infrastructure, not functionality — same two items as `backend/CLAUDE.md`'s
+own "Platform readiness" entry: **no Dockerfile** (`docker-compose.yml` only runs Postgres)
+and **no CI/CD** here at all yet (the backend at least has test-only CI; the frontend's own
+289+E2E test suite currently only runs when someone remembers to `npm test`/`npm run
+test:e2e`). See the itemized list right below for those plus the smaller already-tracked
+polish items (no pre-commit hooks, per-segment `loading.tsx` gaps) — none of them are
+functional gaps, all are deliberate/tracked.
 
 ## Polish / infra
 
 - [ ] **No CI.** The backend has `.github/workflows/test.yml` running its suite on every
-      push; the frontend's 32-test suite currently only runs when someone remembers to type
-      `npm test`. Scoped out of the 2026-07-16 hygiene pass at the user's explicit direction,
-      not forgotten — do this next if picking one item off this list.
+      push; the frontend's 289-test suite currently only runs when someone remembers to
+      type `npm test`. Scoped out of the 2026-07-16 hygiene pass at the user's explicit
+      direction, not forgotten — now that `__tests__/`/`__mocks__/`/`docs/` are actually
+      tracked in git (Phase 13, 2026-08-08), a workflow file can finally run something real
+      instead of zero files; do this next if picking one item off this list.
 - [ ] No Dockerfile on either side of the repo yet (docker-compose.yml is Postgres-only) —
       not a frontend-specific gap, noted for completeness.
 - [ ] No husky/pre-commit hooks on either side — `format:check`/lint/typecheck only run
       manually or (once built) in CI, not before a commit lands locally.
-- [ ] Resolve the TypeScript 6.0.3 (spec) vs 5.9.3 (installed) discrepancy — check whether
-      6.x exists/is stable before deciding whether to force-upgrade or treat the spec as
-      stale.
+- [x] Resolve the TypeScript 6.0.3 (spec) vs 5.9.3 (installed) discrepancy — **done
+      2026-08-19**, see "Stack" above: 6.x is real and stable, installed and fully
+      re-verified.
 - [ ] `next-themes` is installed but unused (hard-coded `dark` class instead) — revisit only
       if a real light/dark toggle becomes a real requirement; the UI spec doesn't call for
       one today.
@@ -868,6 +1022,7 @@ verified, not just attempted. Update this plan as reality diverges from it, do n
 drift the way the old three-bullet stub it replaces did.
 
 ## Decisions made while writing this plan (confirm or override before starting, do not
+
 silently accept)
 
 These are genuine design choices with tradeoffs, not the only way to build this. Each is
@@ -908,7 +1063,7 @@ why something was built a certain way.
 4. **New shared types live in `src/types/security.ts`, mirroring the backend's Prisma
    enums, plus one file per module under a new `src/types/` split if a single file gets too
    large.** Follows the existing precedent set by `src/types/auth.ts` (hand-mirrored `as
-   const` object plus derived type, re-verify against `backend/prisma/schema.prisma` if it
+const` object plus derived type, re-verify against `backend/prisma/schema.prisma` if it
    ever looks stale) rather than introducing a codegen step, same "no shared types package"
    tradeoff already accepted for the rest of this API contract.
 5. **Severity casing changes from the mock data's lowercase (`"critical"`) to the backend's
@@ -981,23 +1136,33 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
 
 - **Auth** (`/auth`): `POST login` (public), `POST refresh` (public, reads/sets the
   `refresh_token` cookie), `POST logout` (any role, `@SkipPasswordCheck()`), `POST
-  forgot-password` (public).
+forgot-password` (public).
 - **Users** (`/users`): `GET me`, `PATCH me/password`, `POST me/request-password-change`,
   `GET me/pending-password-requests` (Admin, Super Admin), `POST` (Admin), `GET` (Admin),
   `GET :id` (Admin), `PATCH :id` (Admin), `PATCH :id/role` (Admin), `POST
-  :id/reset-password` (Admin, Super Admin), `DELETE :id` (Admin). All already wired on the
-  frontend, see "User management" above.
-- **Tenants** (`/tenants`, class-level Super Admin): `POST`, `GET`, `GET :id`, `PATCH :id`
-  (rename, **no frontend**), `DELETE :id`, `GET :id/modules` (**no frontend**), `POST
-  :id/modules` (**no frontend**), `PATCH :id/modules/:moduleName` (**no frontend**),
-  `DELETE :id/modules/:moduleName` (**no frontend**).
+:id/reset-password` (Admin, Super Admin), `DELETE :id` (Admin). All wired on the frontend
+  except **`GET :id`, which has no Route Handler and no caller anywhere** (confirmed by
+  grep during Phase 13's verification pass, 2026-08-08) — not a gap, just genuinely unused:
+  `UserRowActions`' edit dialog already has the full user object as a prop from the list
+  page's one `GET /users` fetch, so no separate per-user detail fetch was ever needed. `GET
+me` and `GET me/pending-password-requests` aren't proxied through a Route Handler either,
+  by design — both are only ever called directly from a Server Component
+  (`(dashboard)/layout.tsx` via `backendFetchAuthedNoRefresh`), never from client-side JS,
+  so there's nothing for a Route Handler to sit in front of. See "User management" above
+  for everything that is genuinely wired.
+- **Tenants** (`/tenants`, class-level Super Admin): `POST`, `GET`, `GET :id` (backend-direct
+  from the Server Component `tenants/[id]/page.tsx`, same no-Route-Handler-needed pattern as
+  `GET /users/me`), `PATCH :id` (rename, Phase 11), `DELETE :id`, `GET :id/modules` (Phase
+  11), `POST :id/modules` (Phase 11), `PATCH :id/modules/:moduleName` (Phase 11), `DELETE
+:id/modules/:moduleName` (Phase 11) — every route here is wired now; see "Tenant
+  management" above.
 - **VM** (`/vm`): `GET assets`, `POST assets` (Admin, Analyst), `PATCH assets/:id` (Admin,
   Analyst), `DELETE assets/:id` (Admin, Analyst), `GET vulnerabilities`, `PATCH
-  vulnerabilities/:id/status` (Admin, Analyst), `POST vulnerabilities/:id/assign` (Admin,
+vulnerabilities/:id/status` (Admin, Analyst), `POST vulnerabilities/:id/assign` (Admin,
   Analyst), `DELETE vulnerabilities/:id/assign` (Admin, Analyst), `POST events` (Admin, out
   of scope per decision 7 above). **No frontend at all.**
 - **EDR** (`/edr`): `GET endpoints`, `PATCH endpoints/:id` (Admin, Analyst), `DELETE
-  endpoints/:id` (Admin, Analyst), `GET detections`, `POST detections/:id/assign` (Admin,
+endpoints/:id` (Admin, Analyst), `GET detections`, `POST detections/:id/assign` (Admin,
   Analyst), `DELETE detections/:id/assign` (Admin, Analyst), `PATCH detections/:id/status`
   (Admin, Analyst), `POST events` (Admin, out of scope). No manual endpoint-create route
   exists, endpoints only ever appear via `ingest()`'s upsert. **No frontend at all.**
@@ -1012,7 +1177,7 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
   (Admin), `DELETE playbooks/:id` (Admin), `GET executions`. **No frontend at all.**
 - **DFIR** (`/dfir`): `GET incidents`, `GET incidents/:id` (the one module with a detail
   endpoint, see decision 8 above), `POST incidents/:id/assign` (Admin, Analyst), `DELETE
-  incidents/:id/assign` (Admin, Analyst), `PATCH incidents/:id/status` (Admin, Analyst),
+incidents/:id/assign` (Admin, Analyst), `PATCH incidents/:id/status` (Admin, Analyst),
   `POST incidents/:id/links` (Admin, Analyst), `DELETE incidents/:id/links/:linkId` (Admin,
   Analyst). **No frontend at all.**
 - **Assets** (`/assets`): `GET feed`. **No frontend at all.**
@@ -1176,7 +1341,7 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
 - [x] Row actions: `AssignmentControl` (shared, Phase 2) for assign/unassign; a **new
       VM-specific** `VulnerabilityStatusMenu` (`src/components/vm/`), not the shared
       `StatusTransitionMenu` — confirmed during Phase 2 that VM's `PATCH
-      vulnerabilities/:id/status` takes the full `VmVulnerabilitiesStatus` enum rather than a
+vulnerabilities/:id/status` takes the full `VmVulnerabilitiesStatus` enum rather than a
       restricted transition subset, so this menu offers all statuses except the current one,
       not a fixed target list. Both hidden for Viewer.
 - [x] Zod schemas: `createVmAssetSchema`/`updateVmAssetSchema` (Phase 2) plus new
@@ -1192,7 +1357,7 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       `@Roles(ADMIN)`-gated on the backend — an Analyst or Viewer session can't call it. The
       VM page only fetches it for an Admin session; Analyst still gets a working "Assign to
       me" (needs no list) and Viewer sees no assign control at all, but neither role can see
-      an assignee's *name*, only `AssignmentControl`'s "Assigned" fallback. Documented in the
+      an assignee's _name_, only `AssignmentControl`'s "Assigned" fallback. Documented in the
       page's own comment rather than silently sending a request that would 403. This applies
       to every later module's list page too, not just VM.
 - [x] Tests: `vm-routes.test.ts` (10, the four new Route Handlers' RBAC/success/error paths;
@@ -1408,11 +1573,11 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
 - [x] **Real finding made while doing this design pass, not anticipated in the original
       plan text:** the mock's fourth KPI, "Resolved today", has **no honest replacement at
       all** — `AssetFeedEntry` has no resolved-at/updated-at timestamp, only `timestamp`
-      (the record's *creation* time, set once and never touched again on a status change —
+      (the record's _creation_ time, set once and never touched again on a status change —
       confirmed directly against `backend/src/asset/asset.service.ts`'s `applyStatusChange`,
       which updates `status` but not `timestamp`). There is no way to answer "resolved
       today" from this schema without a backend change. Dropped rather than faked or
-      silently kept, and replaced with "Assigned to me" — a KPI that *is* honestly
+      silently kept, and replaced with "Assigned to me" — a KPI that _is_ honestly
       answerable from the fetched page and useful to the viewing analyst.
 - [x] `mockTopAttackSources` — confirmed via a full read of the relevant Prisma models
       (`SiemLog`, `SiemAlert`, `EdrDetection`, `VmVulnerability`) that no module stores a
@@ -1470,7 +1635,7 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       `RecordStatusChangedPayload` shape (see `backend/src/asset/asset.service.ts`'s own
       comment on why one handler per module, not one payload per event name) — so the
       plan's "live status-pill updates on `*.assigned`/`*.status_changed`/`*.unassigned`
-      frames" is only partially buildable as three *distinct* behaviors; `assigned` is
+      frames" is only partially buildable as three _distinct_ behaviors; `assigned` is
       distinguishable, the other two are collapsed into one `status_or_unassigned` kind on
       purpose, not a bug.
 - [x] **Live behavior, built as a deliberate simplification of the plan's literal wording,
@@ -1588,7 +1753,7 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       other module, not a Viewer-specific gap). **Conclusion: nothing needed fixing** —
       every module was already built Viewer-correct from Phases 3-8, and `SidebarNav`
       already links every tenant-scoped role (including Viewer, via `isTenantScoped =
-      role !== SUPER_ADMIN`) to all six real module pages. This item is closed by
+role !== SUPER_ADMIN`) to all six real module pages. This item is closed by
       confirmation, not by a code change.
 - [x] Confirmed Next's routing precedence (checked before assuming, per the project's
       standing rule) before deleting anything: a static segment always resolves over a
@@ -1613,20 +1778,66 @@ CTI's internal match logic — is backend-internal and needs no frontend change)
       didn't change), `tsc --noEmit`, `eslint`, `prettier --check`, and `next build` all
       clean (same one pre-existing, unrelated `eslint` finding, still untouched).
 
-## Phase 13, final verification pass
+## Phase 13, final verification pass — DONE 2026-08-08
 
-- [ ] Walk the verified route inventory above one more time against the finished frontend,
-      confirm every route has either a Route Handler plus UI affordance, or an explicit,
-      documented reason it does not (the four `POST .../events` routes per decision 7, EDR's
-      missing manual-create per its own note). No route should be silently missing without
-      one of those two outcomes being true and written down.
-- [ ] Full test suite run, confirm `__tests__/` is no longer gitignored before trusting any
-      test count reported here (see "Testing" above).
-- [ ] Update this file's "Directory structure" diagram, "Known gaps" section, and
-      "Functionality backlog" once each phase actually ships, per this file's own existing
-      "update it as items land, do not let it drift" rule. Update
-      `docs/internship-report-frontend.md` per phase too, matching the backend's own
-      per-phase logging discipline, not as one giant retroactive writeup at the end.
+- [x] Walked the verified route inventory above route-by-route against the finished
+      frontend (grepped every controller's `@Get`/`@Post`/`@Patch`/`@Delete`/`@Sse`
+      decorators fresh, not carried over from memory, then cross-checked each one against
+      `src/app/api/**` and its UI caller). Confirmed the backend has grown zero new routes
+      since the inventory was last verified (2026-08-07) — everything documented there still
+      matches exactly. Found and fixed two real, previously-undocumented drift spots in the
+      inventory's own text (both corrected in place above, not just here): the **Tenants**
+      entry still said `PATCH :id`/the whole `modules` subtree had "no frontend", true when
+      written but stale since Phase 11; and the **Users** entry's blanket "all already
+      wired" claim missed that `GET :id` genuinely has no Route Handler and no caller
+      anywhere — not a gap, `UserRowActions`' edit dialog already has the full user object
+      from the list page's one fetch, but the inventory should say so explicitly rather than
+      imply full coverage it doesn't have. Every other route: real UI, or one of the plan's
+      already-documented exceptions (decision 7's four `POST .../events` routes, EDR's
+      missing manual-create, `GET /users/me` and `GET /tenants/:id` being called directly
+      from Server Components rather than through a Route Handler).
+- [x] **Real, consequential finding, not just a confirmation:** `__tests__/`, `__mocks__/`,
+      and `docs/` — including this file's own sibling `docs/internship-report-frontend.md`
+      — were all still `.gitignore`d, verified directly with `git ls-files`/`git
+check-ignore` (zero tracked files, zero git history, for all three, this entire
+      session). This had been flagged as a real gap since 2026-07-28 and repeated at every
+      later mention, but two places in `docs/internship-report-frontend.md` had drifted
+      into incorrectly claiming it was "closed" — corrected in place there too, not
+      silently rewritten. Fixed here: removed the three lines from `.gitignore`. **Left
+      unstaged and uncommitted** — committing is the user's call, this session only ever
+      edits files, per the standing "commit only when asked" convention.
+- [x] **A second, related finding surfaced only because of the first fix:** Prettier 3.x
+      respects `.gitignore` by default, so every `npx prettier --check "__tests__/**"` run
+      this entire session had been silently a no-op for test files — the reported "clean"
+      results only ever meant `src/` was clean. Once `__tests__/` came off `.gitignore`,
+      re-running the check surfaced 41 genuinely unformatted test files spanning nearly
+      every phase. Reformatted all of them (`prettier --write`, two passes — the first
+      pass's line-length cascades needed a second to fully settle) and reverified: full
+      suite still 289/289 green, `tsc --noEmit` clean, `next build` clean, and
+      `prettier --check` now down to exactly the same 9 pre-existing unformatted `src/`
+      files this session has consistently left untouched (never 10 — `tenant-admins-table
+.tsx` and `reset-admin-password-button.tsx` were always in that set; the two tenant
+      files this session actually wrote, `rename-tenant-button.tsx` and
+      `tenant-module-row-actions.tsx`, are properly formatted). **This claim itself was
+      stale within a day, corrected by the twentieth pass above:** the reformatting scope
+      described here only covered `__tests__/`, not the `docs/` directory this same phase
+      also un-gitignored — `docs/superpowers/specs/2026-07-28-...-design.md` sat unformatted
+      and uncounted until `/code-review` caught it. Left in place per this file's own
+      convention rather than rewritten.
+- [x] Directory structure diagram, Known gaps, and Functionality backlog were already kept
+      current phase-by-phase per this file's own rule (not deferred to this pass) — this
+      pass's own read-through still caught three more stale spots worth fixing rather than
+      leaving for a future reader to trip over: the "Super Admin has no `/users/me`-
+      equivalent" bullet's parenthetical had claimed tenant deletion had no UI long after
+      `DeleteTenantButton` existed (stale since 2026-07-16, never caught by any pass in
+      between); the "No row-level actions on the alerts table" bullet described a mock
+      table that stopped existing in Phase 5; and the "`[module]/page.tsx` stub is still
+      stale" cross-reference in the mock-data bullet needed updating now that Phase 12
+      deleted the stub. All three struck through/corrected in place, matching this file's
+      existing convention rather than silently deleted.
+- [x] `docs/internship-report-frontend.md` gained §3.27 covering this phase, plus the two
+      corrections described above threaded into §3.14/§3.15 where the original false claims
+      lived, and §4's summary bumped to reflect every phase through Phase 13.
 
 # Working with this repo
 

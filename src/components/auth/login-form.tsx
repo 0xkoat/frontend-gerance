@@ -13,6 +13,12 @@ import {
 import { loginSchema } from "@/lib/validations/auth";
 import { fieldErrorsFromZod } from "@/lib/zod-errors";
 
+// Manual useState + zod safeParse, not react-hook-form (not installed in
+// this project — see root CLAUDE.md's stack notes) — this is the pattern
+// every create/edit form in the app follows: client-side validate with the
+// same zod schema the Route Handler re-validates with server-side, submit
+// via fetch to this app's own /api/** proxy (never the backend directly),
+// map a 400's field errors through fieldErrorsFromZod-shaped state.
 export function LoginForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
@@ -50,7 +56,14 @@ export function LoginForm() {
         return;
       }
 
+      // The httpOnly session cookie was just set by the Route Handler (the
+      // browser never sees the raw JWT), so this component has to read the
+      // redirect target off the response body instead of the cookie itself.
       router.push(data.mustChangePassword ? "/change-password" : "/dashboard");
+      // Server Components (the dashboard layout, requireSession() checks,
+      // etc.) don't automatically re-render on a client-side cookie change —
+      // this forces them to, so the very next page reflects the new session
+      // immediately instead of on the following navigation.
       router.refresh();
     } catch {
       setFormError("Could not reach the server. Try again.");

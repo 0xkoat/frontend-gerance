@@ -26,6 +26,7 @@ export default async function SiemLogsPage() {
         </div>
         <Button
           variant="outline"
+          nativeButton={false}
           render={<Link href="/siem">Back to alerts</Link>}
         />
       </div>

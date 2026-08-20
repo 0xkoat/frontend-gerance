@@ -140,6 +140,7 @@ export default async function AssetsPage({
               <Button
                 size="sm"
                 variant="ghost"
+                nativeButton={false}
                 render={<Link href="/assets">Clear filters</Link>}
               />
             )}

@@ -117,6 +117,7 @@ export default async function CtiPage({
                 <Button
                   size="sm"
                   variant="ghost"
+                  nativeButton={false}
                   render={<Link href="/cti">Clear filters</Link>}
                 />
               )}

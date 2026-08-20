@@ -7,6 +7,10 @@ import {
 import { requireSuperAdmin } from "@/lib/api-guards";
 import { createTenantSchema } from "@/lib/validations/tenants";
 
+// Hand-rolled, not proxyToBackend() (proxy-route.ts) — this predates that
+// shared factory (added in Phase 2 for the six security modules) and was
+// never migrated onto it, same as the rest of api/users/**. GET is
+// Super-Admin-only, same RBAC as every other route in this file.
 export async function GET() {
   const { error } = await requireSuperAdmin();
   if (error) return error;

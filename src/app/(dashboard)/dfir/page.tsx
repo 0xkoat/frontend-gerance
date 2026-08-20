@@ -129,6 +129,7 @@ export default async function DfirPage({
               <Button
                 size="sm"
                 variant="ghost"
+                nativeButton={false}
                 render={<Link href="/dfir">Clear filters</Link>}
               />
             )}

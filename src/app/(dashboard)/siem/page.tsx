@@ -80,6 +80,7 @@ export default async function SiemPage({
         </div>
         <Button
           variant="outline"
+          nativeButton={false}
           render={<Link href="/siem/logs">View raw logs</Link>}
         />
       </div>
@@ -132,6 +133,7 @@ export default async function SiemPage({
               <Button
                 size="sm"
                 variant="ghost"
+                nativeButton={false}
                 render={<Link href="/siem">Clear filters</Link>}
               />
             )}

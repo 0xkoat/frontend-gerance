@@ -90,6 +90,7 @@ export default async function VmPage({
         </div>
         <Button
           variant="outline"
+          nativeButton={false}
           render={<Link href="/vm/assets">Manage assets</Link>}
         />
       </div>
@@ -141,6 +142,7 @@ export default async function VmPage({
               <Button
                 size="sm"
                 variant="ghost"
+                nativeButton={false}
                 render={<Link href="/vm">Clear filters</Link>}
               />
             )}

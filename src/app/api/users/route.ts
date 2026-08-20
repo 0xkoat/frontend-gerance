@@ -7,10 +7,14 @@ import {
 import { requireAdmin } from "@/lib/api-guards";
 import { createUserSchema } from "@/lib/validations/users";
 
+// Hand-rolled, not proxyToBackend() — predates that shared factory, same as
+// the rest of api/users/** and api/tenants/**.
 export async function GET(request: Request) {
   const { error } = await requireAdmin();
   if (error) return error;
 
+  // Only page/pageSize are forwarded — GET /users has no other filters, unlike the
+  // six security modules' list routes.
   const { searchParams } = new URL(request.url);
   const page = searchParams.get("page");
   const pageSize = searchParams.get("pageSize");

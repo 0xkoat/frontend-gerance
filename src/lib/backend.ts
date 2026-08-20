@@ -183,6 +183,11 @@ export async function backendFetchAuthedNoRefresh(
   });
 }
 
+// NestJS's default exception body's `message` is a plain string for most
+// errors but a string array for class-validator's per-field DTO validation
+// failures — this is the one place that difference gets normalized down to
+// a single displayable string, so no form component has to check which
+// shape it got.
 export function firstErrorMessage(
   body: BackendErrorBody,
   fallback: string,
