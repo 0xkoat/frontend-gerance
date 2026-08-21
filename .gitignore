@@ -50,3 +50,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+
+AGENTS.md
+.claude
+.remember
+.swc
+/docs
