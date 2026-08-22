@@ -4,9 +4,9 @@ import { StatusTransitionMenu } from "@/components/security/status-transition-me
 import { SIEM_ALERT_TRANSITIONABLE_STATUSES } from "@/types/siem";
 import { mockJsonResponse } from "../test-utils";
 
-const refresh = jest.fn();
-jest.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh }),
+const reload = jest.fn();
+jest.mock("../src/lib/reload-page", () => ({
+  reloadPage: () => reload(),
 }));
 
 const toastError = jest.fn();
@@ -15,7 +15,7 @@ jest.mock("sonner", () => ({
 }));
 
 afterEach(() => {
-  refresh.mockClear();
+  reload.mockClear();
   toastError.mockClear();
 });
 
@@ -100,7 +100,7 @@ describe("StatusTransitionMenu", () => {
 
     await user.click(screen.getByRole("menuitem", { name: "Escalated" }));
 
-    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    await waitFor(() => expect(reload).toHaveBeenCalled());
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe("/api/siem/alerts/a1/status");
     expect(init?.method).toBe("PATCH");
@@ -120,6 +120,6 @@ describe("StatusTransitionMenu", () => {
     await waitFor(() =>
       expect(toastError).toHaveBeenCalledWith("Alert not found"),
     );
-    expect(refresh).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
   });
 });

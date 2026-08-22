@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { reloadPage } from "@/lib/reload-page";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -42,7 +42,6 @@ export function AssignmentControl({
   currentUserRole: UserRole;
   assignableUsers: AssignableUser[];
 }) {
-  const router = useRouter();
   const [pending, setPending] = useState(false);
 
   // Viewer is read-only by design (backend/CLAUDE.md's module plan, decision 9) — the
@@ -68,7 +67,17 @@ export function AssignmentControl({
         toast.error(data.message ?? "Could not update assignment");
         return;
       }
-      router.refresh();
+      // window.location.reload(), not router.refresh() — hit for real, 2026-08-22, against
+      // the real deployed VM: router.refresh()'s soft RSC refetch genuinely gets a fresh,
+      // uncached 200 response from the server (verified directly via network capture — the
+      // backend mutation itself is correct, confirmed both by the assign response body and
+      // an independent re-fetch), but the client never applied it to this row; a hard
+      // reload of the same page immediately showed the correct data. Never reproduced
+      // against local dev (`next dev`), only against the real production build — root cause
+      // not fully chased down (Next's client Router Cache internals), but a full reload is
+      // verified to reliably show correct data every time, which matters more than a smooth
+      // partial refresh for a row that just changed ownership/status.
+      reloadPage();
     } catch {
       toast.error("Could not reach the server. Try again.");
     } finally {

@@ -36,7 +36,11 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 8_000 },
   use: {
-    baseURL: "http://localhost:3001",
+    // Overridable so this suite can also run against a real deployed target (e.g. the
+    // Azure VM) instead of only a local dev server — added 2026-08-22. Defaults to
+    // localhost, unchanged from before, so nothing about local runs changes unless
+    // E2E_BASE_URL is explicitly set.
+    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3001",
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
