@@ -1,0 +1,85 @@
+name: Build
+
+# This repo had no CI at all before this file (see CLAUDE.md's "Polish / infra" — "No CI"
+# was the top item there). One workflow covers what test.yml+build.yml split into on the
+# backend, since there's no existing frontend test.yml to stay separate from: lint, unit
+# tests with coverage, a SonarCloud scan, and — only on a real push to main — building and
+# pushing the frontend image to GHCR for deploy.yml to pick up. Playwright e2e
+# (`npm run test:e2e`) deliberately isn't run here — it needs a full running stack
+# (frontend + backend + seeded Postgres), which doesn't exist in this job; that suite stays
+# a local/pre-deploy check for now, same as it's always been.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  sonar:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # SonarCloud's new-code/blame features want real history, not the default
+          # single-commit shallow checkout.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm test -- --coverage
+
+      - name: SonarCloud scan
+        uses: SonarSource/sonarqube-scan-action@v8
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          # SonarCloud specifically (not a self-hosted server) — the action's default host
+          # when SONAR_HOST_URL is unset.
+        with:
+          # sonar.organization is a guess (your GitHub username, matching SonarCloud's
+          # default when importing a repo) — confirm against the real value once the
+          # SonarCloud project exists, fix here if it differs.
+          args: >
+            -Dsonar.organization=0xkoat
+            -Dsonar.projectKey=0xkoat_frontend-gerance
+            -Dsonar.sources=src
+            -Dsonar.tests=src,__tests__
+            -Dsonar.test.inclusions=__tests__/**/*.test.ts,__tests__/**/*.test.tsx
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+            -Dsonar.exclusions=**/node_modules/**,**/.next/**,e2e/**,**/coverage/**
+
+  build-and-push:
+    needs: sonar
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push frontend image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/gerance-frontend:${{ github.sha }}
+            ghcr.io/${{ github.repository_owner }}/gerance-frontend:latest
