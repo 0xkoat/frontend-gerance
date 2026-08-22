@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type SubmitEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { useRouter } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
@@ -270,13 +270,18 @@ function ChangeRoleDialog({
 
   // The dialog stays mounted between opens (only `open` toggles), so without this the Select
   // would keep whatever was last picked — including a choice the admin cancelled out of —
-  // instead of reflecting the user's actual current role on reopen.
-  useEffect(() => {
+  // instead of reflecting the user's actual current role on reopen. Reset during render
+  // (React's own documented pattern for "adjust state when a prop changes," comparing against
+  // a tracked previous value) rather than in a useEffect — a synchronous setState inside an
+  // effect body triggers a cascading extra render, which is exactly what this pattern avoids.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
     if (open) {
       setRole(user.role);
       setFormError(null);
     }
-  }, [open, user.role]);
+  }
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
