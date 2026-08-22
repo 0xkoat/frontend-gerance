@@ -967,26 +967,40 @@ dashboard/asset feed, RBAC across all 4 roles) confirmed everything works as bui
 --noEmit`, `eslint --max-warnings=0`, `prettier --check`, `next build`, and the full test
 suite are all clean.
 
-What's left is infrastructure, not functionality — same two items as `backend/CLAUDE.md`'s
-own "Platform readiness" entry: **no Dockerfile** (`docker-compose.yml` only runs Postgres)
-and **no CI/CD** here at all yet (the backend at least has test-only CI; the frontend's own
-289+E2E test suite currently only runs when someone remembers to `npm test`/`npm run
-test:e2e`). See the itemized list right below for those plus the smaller already-tracked
-polish items (no pre-commit hooks, per-segment `loading.tsx` gaps) — none of them are
-functional gaps, all are deliberate/tracked.
+~~What's left is infrastructure, not functionality — same two items as `backend/CLAUDE.md`'s
+own "Platform readiness" entry: no Dockerfile... no CI/CD here at all yet...~~ **No longer
+true, fixed 2026-08-21/22** — see `backend/CLAUDE.md`'s own "Platform readiness" entry (kept
+struck through rather than deleted, per this file's convention) for the full account, which
+applies here too: `frontend/Dockerfile` (multi-stage, `output: 'standalone'`), the root-level
+`docker-compose.yml`/`docker-compose.image.yml`, and `.github/workflows/build.yml`+
+`deploy.yml` (frontend's own SonarCloud scan, GHCR image push, and Azure VM SSH deploy) all
+exist and are live-verified — including a real login completing end to end through the
+containerized frontend talking to the containerized backend over Docker's network. Frontend's
+own `build.yml`/`deploy.yml` also got the CI-hardening pass (SHA-pinned actions, per-job
+`permissions:`), committed and pushed. `npm test`/`npm run test:e2e` still don't run in CI
+automatically — `test.yml`-equivalent CI for the Jest/Playwright suites is the one real gap
+left in this area, see the itemized list right below for that plus the smaller
+already-tracked polish items (no pre-commit hooks, per-segment `loading.tsx` gaps) — none of
+them are functional gaps, all are deliberate/tracked.
 
 ## Polish / infra
 
-- [ ] **No CI.** The backend has `.github/workflows/test.yml` running its suite on every
-      push; the frontend's 289-test suite currently only runs when someone remembers to
-      type `npm test`. Scoped out of the 2026-07-16 hygiene pass at the user's explicit
-      direction, not forgotten — now that `__tests__/`/`__mocks__/`/`docs/` are actually
-      tracked in git (Phase 13, 2026-08-08), a workflow file can finally run something real
-      instead of zero files; do this next if picking one item off this list.
-- [ ] No Dockerfile on either side of the repo yet (docker-compose.yml is Postgres-only) —
-      not a frontend-specific gap, noted for completeness.
-- [ ] No husky/pre-commit hooks on either side — `format:check`/lint/typecheck only run
-      manually or (once built) in CI, not before a commit lands locally.
+- ~~No CI.~~ **No longer true, fixed 2026-08-21.** `build.yml`'s `sonar` job now runs
+      `npm run lint` + `npm test -- --coverage` (the full 289-test Jest suite) + a
+      SonarCloud scan on every push/PR — checked directly against the workflow file, not
+      assumed. What's still genuinely missing: `tsc --noEmit` and `prettier --check` aren't
+      run as CI steps (only lint/test are), and the Playwright e2e suite is deliberately
+      excluded — it needs a full running stack (frontend+backend+seeded Postgres) that a
+      single-repo job doesn't have, so it stays a local/pre-deploy check, same as always.
+      Adding `tsc`/`prettier --check` as two more steps in the existing `sonar` job is the
+      cheap remaining win here if picking one item off this list.
+- ~~No Dockerfile on either side of the repo yet~~ **Done 2026-08-21/22** — see "Platform
+      readiness" above for the full account (both Dockerfiles, root-level compose files,
+      `build.yml`/`deploy.yml` on both repos, all live-verified). Left struck through
+      rather than deleted per this file's own convention.
+- [ ] No husky/pre-commit hooks on either side — `format:check`/`tsc --noEmit` still only
+      run manually (lint/test do run in CI now, see above), nothing runs before a commit
+      lands locally either way.
 - [x] Resolve the TypeScript 6.0.3 (spec) vs 5.9.3 (installed) discrepancy — **done
       2026-08-19**, see "Stack" above: 6.x is real and stable, installed and fully
       re-verified.
