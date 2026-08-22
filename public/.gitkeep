@@ -1,0 +1,7 @@
+# Empty on purpose — this app has no static assets under public/; the favicon is generated
+# via src/app/icon.tsx (next/og's ImageResponse), not a static file here (see CLAUDE.md's
+# "Known gaps" — the favicon bullet). This placeholder exists only so git tracks the
+# directory at all: git never tracks empty directories, so without this, a fresh clone (or
+# CI checkout) simply has no public/ folder on disk — found failing in CI 2026-08-22 when
+# frontend/Dockerfile's `COPY --from=builder /app/public ./public/` errored with
+# "/app/public": not found, for exactly this reason.
