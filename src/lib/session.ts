@@ -52,7 +52,15 @@ export async function getToken(): Promise<string | null> {
 export async function setSessionCookie(token: string) {
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    // HTTPS_ENABLED, not NODE_ENV — a real bug hit and fixed 2026-08-22 (see
+    // next.config.ts's own comment for the CSP/HSTS half of this same class of bug): a
+    // genuine production build (NODE_ENV=production) can still be served over plain HTTP
+    // (no TLS in front of it yet). A Secure cookie set over plain HTTP to anything other
+    // than localhost is silently dropped by the browser — login itself returned 200 with a
+    // correct JWT, but the browser never stored the cookie, so every subsequent navigation
+    // had no session and bounced back to /login. HTTPS_ENABLED defaults to unset/false,
+    // matching every deployment target that exists today.
+    secure: process.env.HTTPS_ENABLED === "true",
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_MAX_AGE_SECONDS,

@@ -69,7 +69,13 @@ export async function applyRefreshCookie(backendRes: Response): Promise<void> {
 
   (await cookies()).set(REFRESH_TOKEN_COOKIE, value, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    // HTTPS_ENABLED, not NODE_ENV — same real bug as session.ts's setSessionCookie (see
+    // that file's own comment) and backend-gerance's auth.controller.ts. This is the one
+    // that actually mattered for the login flow observed live 2026-08-22: this function
+    // reconstructs the refresh_token cookie itself via Next's own cookies().set() — it's
+    // what the browser actually receives through the frontend proxy, independent of
+    // whatever secure value the backend's own raw Set-Cookie header used.
+    secure: process.env.HTTPS_ENABLED === "true",
     sameSite: "lax",
     path: REFRESH_TOKEN_COOKIE_PATH,
     expires,
