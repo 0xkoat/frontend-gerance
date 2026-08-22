@@ -50,6 +50,17 @@ jobs:
             # backend-gerance's deploy.yml (2026-08-22) — this file was written from the
             # same template and inherited it; fixed here before it could repeat the failure.
             cd /opt/gerance-platform
-            export TAG="${{ github.event.workflow_run.head_sha || github.sha }}"
+            # FRONTEND_TAG, not a shared TAG — this was the actual cause of a real failed
+            # deploy (2026-08-22): with one shared TAG, exporting it here to *this repo's*
+            # commit sha and running `docker compose up -d frontend` made Compose
+            # recompute backend's desired image using that same (wrong) sha too — `up`
+            # reconciles the whole dependency graph it's starting (frontend → backend →
+            # migrate), not just the named service — and fail trying to pull a backend
+            # image tag that was never built ("not found"). Splitting into
+            # BACKEND_TAG/FRONTEND_TAG (docker-compose.image.yml's own comment has the full
+            # account) means this repo's deploy only ever moves its own tag, leaving
+            # BACKEND_TAG at its default (latest, i.e. whatever backend-gerance's own
+            # pipeline last deployed).
+            export FRONTEND_TAG="${{ github.event.workflow_run.head_sha || github.sha }}"
             docker compose -f docker-compose.image.yml pull frontend
             docker compose -f docker-compose.image.yml up -d frontend
