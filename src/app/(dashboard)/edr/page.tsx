@@ -3,12 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { requireSession } from "@/lib/session";
 import { backendFetchAuthedNoRefresh } from "@/lib/backend";
-import { buildQueryParams, hasNextPage } from "@/lib/query-filters";
+import {
+  buildQueryParams,
+  buildModulePageHref,
+  hasNextPage,
+} from "@/lib/query-filters";
+import { resolveAssignableTenantUsers } from "@/lib/assignable-users";
 import { SEVERITY_ORDER, SEVERITY_LABEL } from "@/lib/severity";
 import { NextOnlyPagination } from "@/components/security/next-only-pagination";
 import { DetectionsTable } from "@/components/edr/detections-table";
 import type { AssignableUser } from "@/components/security/assignment-control";
-import type { TenantUser } from "@/components/users/users-table";
 import type { Severity } from "@/types/security";
 import type { EdrDetection, EdrEndpoint } from "@/types/edr";
 import { UserRole } from "@/types/auth";
@@ -20,14 +24,6 @@ type SearchParams = {
   assignedToMe?: string;
   page?: string;
 };
-
-function hrefForPage(sp: SearchParams, page: number): string {
-  const params = new URLSearchParams();
-  if (sp.severity) params.set("severity", sp.severity);
-  if (sp.assignedToMe) params.set("assignedToMe", sp.assignedToMe);
-  params.set("page", String(page));
-  return `/edr?${params.toString()}`;
-}
 
 export default async function EdrPage({
   searchParams,
@@ -61,18 +57,9 @@ export default async function EdrPage({
     : [];
   const endpointsById = Object.fromEntries(endpoints.map((e) => [e.id, e]));
 
-  // Same GET /users constraint as VM's page (Phase 3) — Admin-only on the backend, so only
-  // an Admin session can resolve assignedToUserId to a name.
-  let assignableUsers: AssignableUser[] = [];
-  if (session.role === UserRole.ADMIN) {
-    const usersRes = await backendFetchAuthedNoRefresh("/users?pageSize=100");
-    if (usersRes.ok) {
-      const data = (await usersRes.json()) as { users: TenantUser[] };
-      assignableUsers = data.users
-        .filter((u) => u.role === "ADMIN" || u.role === "ANALYST")
-        .map((u) => ({ id: u.id, name: u.name, role: u.role as UserRole }));
-    }
-  }
+  const assignableUsers: AssignableUser[] = (
+    await resolveAssignableTenantUsers(session)
+  ).map((u) => ({ id: u.id, name: u.name, role: u.role as UserRole }));
 
   return (
     <div className="flex flex-col gap-6">
@@ -139,7 +126,7 @@ export default async function EdrPage({
             <NextOnlyPagination
               page={page}
               hasNextPage={hasNextPage(detections.length, PAGE_SIZE)}
-              buildHref={(p) => hrefForPage(sp, p)}
+              buildHref={(p) => buildModulePageHref("/edr", sp, p)}
             />
           </div>
         </CardHeader>

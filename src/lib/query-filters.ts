@@ -29,3 +29,21 @@ export function buildQueryParams(filters: BaseQueryFilters): URLSearchParams {
 export function hasNextPage(itemCount: number, pageSize: number): boolean {
   return itemCount >= pageSize;
 }
+
+// Every module list page had its own byte-identical `hrefForPage`, differing only in the
+// base path and which SearchParams keys it carried — this replaces all of them. `page` is
+// deliberately excluded from the generic copy-over and set explicitly afterward, since the
+// caller is always building an href for a *specific* target page, not echoing whatever page
+// happened to be in the current URL.
+export function buildModulePageHref<T extends Record<string, string | undefined>>(
+  basePath: string,
+  searchParams: T,
+  page: number,
+): string {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (key !== "page" && value) params.set(key, value);
+  }
+  params.set("page", String(page));
+  return `${basePath}?${params.toString()}`;
+}

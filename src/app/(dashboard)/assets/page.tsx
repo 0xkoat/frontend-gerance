@@ -3,12 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { requireSession } from "@/lib/session";
 import { backendFetchAuthedNoRefresh } from "@/lib/backend";
-import { buildQueryParams, hasNextPage } from "@/lib/query-filters";
+import {
+  buildQueryParams,
+  buildModulePageHref,
+  hasNextPage,
+} from "@/lib/query-filters";
+import { resolveAssignableTenantUsers } from "@/lib/assignable-users";
 import { SEVERITY_ORDER, SEVERITY_LABEL } from "@/lib/severity";
 import { NextOnlyPagination } from "@/components/security/next-only-pagination";
 import { FeedTable } from "@/components/assets/feed-table";
 import { LiveEvents } from "@/components/security/live-events";
-import type { TenantUser } from "@/components/users/users-table";
 import type { Severity } from "@/types/security";
 import type { AssetFeedEntry } from "@/types/assets";
 import { UserRole } from "@/types/auth";
@@ -22,16 +26,6 @@ type SearchParams = {
   dateTo?: string;
   page?: string;
 };
-
-function hrefForPage(sp: SearchParams, page: number): string {
-  const params = new URLSearchParams();
-  if (sp.severity) params.set("severity", sp.severity);
-  if (sp.assignedToMe) params.set("assignedToMe", sp.assignedToMe);
-  if (sp.dateFrom) params.set("dateFrom", sp.dateFrom);
-  if (sp.dateTo) params.set("dateTo", sp.dateTo);
-  params.set("page", String(page));
-  return `/assets?${params.toString()}`;
-}
 
 // The unified cross-module feed (GET /assets/feed) — every module's created/assigned/
 // status-changed events, materialized into one indexed, paginated view (see
@@ -61,17 +55,12 @@ export default async function AssetsPage({
   );
   const entries: AssetFeedEntry[] = res.ok ? await res.json() : [];
 
-  // Same GET /users constraint as every module list page since Phase 3 — Admin-only on the
-  // backend, so only an Admin session can resolve an assignee's name; Analyst/Viewer still
-  // see "You" on their own rows via FeedTable's currentUserId check.
-  let userNameById: Record<string, string> = {};
-  if (session.role === UserRole.ADMIN) {
-    const usersRes = await backendFetchAuthedNoRefresh("/users?pageSize=100");
-    if (usersRes.ok) {
-      const data = (await usersRes.json()) as { users: TenantUser[] };
-      userNameById = Object.fromEntries(data.users.map((u) => [u.id, u.name]));
-    }
-  }
+  // Analyst/Viewer still see "You" on their own rows via FeedTable's currentUserId check
+  // even with an empty map here — resolveAssignableTenantUsers only returns data for an
+  // Admin session, same constraint every module list page has had since Phase 3.
+  const userNameById = Object.fromEntries(
+    (await resolveAssignableTenantUsers(session)).map((u) => [u.id, u.name]),
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -153,7 +142,7 @@ export default async function AssetsPage({
             <NextOnlyPagination
               page={page}
               hasNextPage={hasNextPage(entries.length, PAGE_SIZE)}
-              buildHref={(p) => hrefForPage(sp, p)}
+              buildHref={(p) => buildModulePageHref("/assets", sp, p)}
             />
           </div>
         </CardHeader>

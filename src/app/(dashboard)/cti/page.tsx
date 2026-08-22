@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { requireSession } from "@/lib/session";
 import { backendFetchAuthedNoRefresh } from "@/lib/backend";
-import { hasNextPage } from "@/lib/query-filters";
+import { buildModulePageHref, hasNextPage } from "@/lib/query-filters";
 import { NextOnlyPagination } from "@/components/security/next-only-pagination";
 import { IocsTable } from "@/components/cti/iocs-table";
 import { CreateIocForm } from "@/components/cti/create-ioc-form";
@@ -19,15 +19,6 @@ type SearchParams = {
   dateTo?: string;
   page?: string;
 };
-
-function hrefForPage(sp: SearchParams, page: number): string {
-  const params = new URLSearchParams();
-  if (sp.type) params.set("type", sp.type);
-  if (sp.dateFrom) params.set("dateFrom", sp.dateFrom);
-  if (sp.dateTo) params.set("dateTo", sp.dateTo);
-  params.set("page", String(page));
-  return `/cti?${params.toString()}`;
-}
 
 export default async function CtiPage({
   searchParams,
@@ -129,7 +120,7 @@ export default async function CtiPage({
               <NextOnlyPagination
                 page={page}
                 hasNextPage={hasNextPage(iocs.length, PAGE_SIZE)}
-                buildHref={(p) => hrefForPage(sp, p)}
+                buildHref={(p) => buildModulePageHref("/cti", sp, p)}
               />
             </div>
           </CardHeader>
