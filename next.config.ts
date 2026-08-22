@@ -1,6 +1,19 @@
 import type { NextConfig } from "next";
 
 const isProd = process.env.NODE_ENV === "production";
+// Separate from isProd on purpose — isProd controls dev-only relaxations (unsafe-eval), but
+// a real *deployed* instance can still be served over plain HTTP (no TLS termination in
+// front of it yet) while running a genuine production build. Hit for real, 2026-08-22: the
+// first time this app was accessed via anything other than localhost (a real VM IP), every
+// CSS/JS/font asset failed to load — the page rendered as unstyled raw HTML — because
+// `upgrade-insecure-requests` made the browser rewrite every relative asset request to
+// https://, and that VM has no TLS listener anywhere. (localhost/loopback is specifically
+// exempted from that CSP directive by browsers, which is why every earlier
+// http://localhost:3001 smoke test in this project never surfaced this.) HTTPS_ENABLED
+// defaults to unset/false, matching every deployment target that exists today; set it to
+// "true" only once this app is genuinely served behind real TLS (a reverse proxy
+// terminating HTTPS, or a cert given directly to Next).
+const httpsEnabled = process.env.HTTPS_ENABLED === "true";
 
 // Static (non-nonce) CSP — see node_modules/next/dist/docs/01-app/02-guides/
 // content-security-policy.md. A nonce-based policy is stricter but forces every page into
@@ -22,7 +35,7 @@ const cspHeader = `
   base-uri 'self';
   form-action 'self';
   frame-ancestors 'none';
-  ${isProd ? "upgrade-insecure-requests;" : ""}
+  ${httpsEnabled ? "upgrade-insecure-requests;" : ""}
 `
   .replace(/\s{2,}/g, " ")
   .trim();
@@ -42,10 +55,10 @@ const securityHeaders = [
   },
   { key: "X-DNS-Prefetch-Control", value: "on" },
   // Mirrors the backend's helmet() HSTS config (backend/src/main.ts) — same 2-year max-age.
-  // Only sent in production: HSTS on a plain-HTTP local dev server is inert but meaningless,
-  // and could be actively confusing (some browsers cache the header's promise even before
-  // the app is served over HTTPS anywhere).
-  ...(isProd
+  // Gated on httpsEnabled, not isProd (see that variable's own comment) — HSTS on a
+  // plain-HTTP server is inert-per-spec (browsers ignore it outside a secure context) but
+  // still actively confusing to send from a real deployed instance with no TLS anywhere.
+  ...(httpsEnabled
     ? [
         {
           key: "Strict-Transport-Security",
