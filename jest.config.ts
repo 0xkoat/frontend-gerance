@@ -11,6 +11,12 @@ const config: Config = {
   coverageProvider: "v8",
   testEnvironment: "jsdom",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.ts"],
+  // e2e/ is Playwright's suite (playwright.config.ts's own testDir), not
+  // Jest's — without this, Jest's default testMatch picks up every
+  // e2e/*.spec.ts file too (they match "*.spec.ts" the same as this
+  // project's own Jest specs do) and fails importing `@playwright/test`,
+  // which isn't meant to run inside a Jest/jsdom environment at all.
+  testPathIgnorePatterns: ["<rootDir>/node_modules/", "<rootDir>/e2e/"],
   moduleNameMapper: {
     // See __mocks__/empty.js for why this mapping exists.
     "^server-only$": "<rootDir>/__mocks__/empty.js",
