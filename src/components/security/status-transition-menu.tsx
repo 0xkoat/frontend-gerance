@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { reloadPage } from "@/lib/reload-page";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -38,7 +38,6 @@ export function StatusTransitionMenu<S extends string>({
   statusLabels?: Partial<Record<S, string>>;
   currentUserRole: UserRole;
 }) {
-  const router = useRouter();
   const [pending, setPending] = useState(false);
 
   // Same "don't offer what the backend would reject anyway" principle as AssignmentControl.
@@ -60,7 +59,10 @@ export function StatusTransitionMenu<S extends string>({
         toast.error(data.message ?? "Could not update status");
         return;
       }
-      router.refresh();
+      // window.location.reload(), not router.refresh() — see assignment-control.tsx's own
+      // comment for the full account of the real bug this works around (verified live
+      // against the real deployed VM, never reproduced locally).
+      reloadPage();
     } catch {
       toast.error("Could not reach the server. Try again.");
     } finally {

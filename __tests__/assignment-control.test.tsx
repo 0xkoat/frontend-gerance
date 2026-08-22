@@ -3,9 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { AssignmentControl } from "@/components/security/assignment-control";
 import { mockJsonResponse } from "../test-utils";
 
-const refresh = jest.fn();
-jest.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh }),
+const reload = jest.fn();
+jest.mock("../src/lib/reload-page", () => ({
+  reloadPage: () => reload(),
 }));
 
 const toastError = jest.fn();
@@ -20,7 +20,7 @@ const members = [
 
 afterEach(() => {
   jest.restoreAllMocks();
-  refresh.mockClear();
+  reload.mockClear();
   toastError.mockClear();
 });
 
@@ -87,7 +87,7 @@ describe("AssignmentControl", () => {
 
     await user.click(screen.getByRole("button", { name: "Unassign" }));
 
-    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    await waitFor(() => expect(reload).toHaveBeenCalled());
     const [url, init] = fetchMock.mock.calls[0];
     expect(String(url)).toBe("/api/vm/vulnerabilities/v1/assign");
     expect(init?.method).toBe("DELETE");
@@ -111,7 +111,7 @@ describe("AssignmentControl", () => {
 
     await user.click(screen.getByRole("button", { name: "Assign to me" }));
 
-    await waitFor(() => expect(refresh).toHaveBeenCalled());
+    await waitFor(() => expect(reload).toHaveBeenCalled());
     const [, init] = fetchMock.mock.calls[0];
     expect(init?.method).toBe("POST");
     expect(JSON.parse(init?.body as string)).toEqual({
@@ -147,7 +147,7 @@ describe("AssignmentControl", () => {
         "Alert is already resolved and cannot be reassigned",
       ),
     );
-    expect(refresh).not.toHaveBeenCalled();
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it("renders a picker (not a button) for an unassigned Admin", () => {
