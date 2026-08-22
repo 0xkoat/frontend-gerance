@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 // the real message — showing it here would be inconsistent (sometimes detailed, sometimes
 // not) and risks leaking internals for the client-thrown case. The digest (when present) is
 // enough for a user to reference when reporting it, without exposing what actually failed.
-export default function Error({
+export default function RouteError({
   error,
   unstable_retry,
 }: {
