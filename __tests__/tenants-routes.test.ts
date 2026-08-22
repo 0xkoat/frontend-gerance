@@ -42,6 +42,10 @@ function req(body?: unknown) {
   return reqMethod("POST", body);
 }
 
+function getReq(url = "http://localhost:3001/api/tenants") {
+  return new Request(url);
+}
+
 function paramsOf(id: string) {
   return { params: Promise.resolve({ id }) };
 }
@@ -59,7 +63,7 @@ describe("GET /api/tenants", () => {
     setSession(null);
     const { GET } = await import("@/app/api/tenants/route");
 
-    const res = await GET();
+    const res = await GET(getReq());
 
     expect(res.status).toBe(401);
   });
@@ -68,7 +72,7 @@ describe("GET /api/tenants", () => {
     setSession(adminToken);
     const { GET } = await import("@/app/api/tenants/route");
 
-    const res = await GET();
+    const res = await GET(getReq());
 
     expect(res.status).toBe(403);
   });
@@ -85,7 +89,7 @@ describe("GET /api/tenants", () => {
       );
     const { GET } = await import("@/app/api/tenants/route");
 
-    const res = await GET();
+    const res = await GET(getReq());
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([{ id: "t1", name: "Meridian Corp" }]);

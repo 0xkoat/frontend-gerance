@@ -1,12 +1,9 @@
-import { NextResponse } from "next/server";
-import {
-  backendFetchAuthed,
-  firstErrorMessage,
-  type BackendErrorBody,
-} from "@/lib/backend";
+import { proxyToBackend } from "@/lib/proxy-route";
 import { requireAdminOrSuperAdmin } from "@/lib/api-guards";
 import { resetPasswordSchema } from "@/lib/validations/users";
 
+// Converted to proxyToBackend() — see users/route.ts's own comment for the full reasoning.
+//
 // Backend rejects id === caller's own userId — resetting your own password this way would
 // let a stolen bearer token turn into permanent account takeover with no proof of the old
 // password (see backend/CLAUDE.md). Self password changes go through
@@ -15,42 +12,10 @@ import { resetPasswordSchema } from "@/lib/validations/users";
 // Also reachable by a Super Admin now (backend/src/users/users.controller.ts), for the case
 // where a tenant's sole Admin needs a reset and has no co-Admin to do it for them — the
 // backend enforces the "sole Admin" restriction, this route just relays whatever it decides.
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const { error } = await requireAdminOrSuperAdmin();
-  if (error) return error;
-
-  const body = await request.json().catch(() => null);
-  const parsed = resetPasswordSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { message: parsed.error.issues[0]?.message ?? "Invalid input" },
-      { status: 400 },
-    );
-  }
-
-  const { id } = await params;
-  const backendRes = await backendFetchAuthed(`/users/${id}/reset-password`, {
-    method: "POST",
-    body: JSON.stringify(parsed.data),
-  });
-
-  if (!backendRes.ok) {
-    const errorBody = (await backendRes
-      .json()
-      .catch(() => null)) as BackendErrorBody | null;
-    return NextResponse.json(
-      {
-        message: errorBody
-          ? firstErrorMessage(errorBody, "Could not reset password")
-          : "Could not reset password",
-      },
-      { status: backendRes.status },
-    );
-  }
-
-  const body2 = await backendRes.json();
-  return NextResponse.json(body2);
-}
+export const POST = proxyToBackend({
+  method: "POST",
+  path: (params) => `/users/${params.id}/reset-password`,
+  schema: resetPasswordSchema,
+  guard: requireAdminOrSuperAdmin,
+  fallbackErrorMessage: "Could not reset password",
+});

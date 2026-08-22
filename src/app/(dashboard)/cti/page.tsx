@@ -1,10 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import Link from "next/link";
 import { requireSession } from "@/lib/session";
 import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import { buildModulePageHref, hasNextPage } from "@/lib/query-filters";
-import { NextOnlyPagination } from "@/components/security/next-only-pagination";
+import { FilterFormActions } from "@/components/security/filter-form-actions";
+import { ItemCountPagination } from "@/components/security/item-count-pagination";
 import { IocsTable } from "@/components/cti/iocs-table";
 import { CreateIocForm } from "@/components/cti/create-ioc-form";
 import type { CtiIoc } from "@/types/cti";
@@ -101,23 +100,15 @@ export default async function CtiPage({
                   className="h-8 rounded-lg border border-input bg-transparent px-2 text-sm"
                 />
               </label>
-              <Button type="submit" size="sm" variant="outline">
-                Apply
-              </Button>
-              {(sp.type || sp.dateFrom || sp.dateTo) && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  nativeButton={false}
-                  render={<Link href="/cti">Clear filters</Link>}
-                />
-              )}
+              <FilterFormActions
+                hasActiveFilters={Boolean(sp.type || sp.dateFrom || sp.dateTo)}
+                clearHref="/cti"
+              />
             </form>
             <div className="flex items-center justify-between">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
-                {iocs.length} IOC{iocs.length === 1 ? "" : "s"} on this page
-              </CardTitle>
-              <NextOnlyPagination
+              <ItemCountPagination
+                count={iocs.length}
+                singular="IOC"
                 page={page}
                 hasNextPage={hasNextPage(iocs.length, PAGE_SIZE)}
                 buildHref={(p) => buildModulePageHref("/cti", sp, p)}

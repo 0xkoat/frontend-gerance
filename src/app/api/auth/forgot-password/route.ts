@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { backendFetch } from "@/lib/backend";
 import { forgotPasswordSchema } from "@/lib/validations/auth";
+import { parseJsonBody } from "@/lib/proxy-route";
 
 // Same login-CSRF exposure as POST /api/auth/login (see that route's comment): this route
 // also has no pre-existing-cookie precondition, so a cross-site page could otherwise reach
@@ -16,16 +17,10 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = await request.json().catch(() => null);
-  const parsed = forgotPasswordSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { message: parsed.error.issues[0]?.message ?? "Invalid input" },
-      { status: 400 },
-    );
-  }
+  const parsed = await parseJsonBody(request, forgotPasswordSchema);
+  if (parsed.error) return parsed.error;
 
-  // Backend always responds with the same generic message regardless of whether the email exists 
+  // Backend always responds with the same generic message regardless of whether the email exists
   const backendRes = await backendFetch("/auth/forgot-password", {
     method: "POST",
     body: JSON.stringify(parsed.data),

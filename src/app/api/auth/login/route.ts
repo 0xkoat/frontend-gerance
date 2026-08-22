@@ -1,12 +1,8 @@
 import { NextResponse } from "next/server";
-import {
-  backendFetch,
-  firstErrorMessage,
-  applyRefreshCookie,
-  type BackendErrorBody,
-} from "@/lib/backend";
+import { backendFetch, applyRefreshCookie } from "@/lib/backend";
 import { setSessionCookie } from "@/lib/session";
 import { loginSchema } from "@/lib/validations/auth";
+import { parseJsonBody, backendErrorResponse } from "@/lib/proxy-route";
 
 // Thin proxy to POST /api/auth/login on the backend. The only reason this exists instead
 // of the browser calling the backend directly: it's the one place allowed to read the raw
@@ -35,14 +31,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = await request.json().catch(() => null);
-  const parsed = loginSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { message: parsed.error.issues[0]?.message ?? "Invalid input" },
-      { status: 400 },
-    );
-  }
+  const parsed = await parseJsonBody(request, loginSchema);
+  if (parsed.error) return parsed.error;
 
   const backendRes = await backendFetch("/auth/login", {
     method: "POST",
@@ -50,17 +40,7 @@ export async function POST(request: Request) {
   });
 
   if (!backendRes.ok) {
-    const errorBody = (await backendRes
-      .json()
-      .catch(() => null)) as BackendErrorBody | null;
-    return NextResponse.json(
-      {
-        message: errorBody
-          ? firstErrorMessage(errorBody, "Login failed")
-          : "Login failed",
-      },
-      { status: backendRes.status },
-    );
+    return backendErrorResponse(backendRes, "Login failed");
   }
 
   const { access_token, mustChangePassword } = (await backendRes.json()) as {

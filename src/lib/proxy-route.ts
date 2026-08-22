@@ -16,6 +16,47 @@ type Guard = () => Promise<
   | { error: null; session: SessionClaims }
 >;
 
+// Extracted from proxyToBackend() below so the handful of Route Handlers that can't use the
+// full factory (api/auth/login, api/auth/forgot-password — no session token yet, so they
+// need backendFetch not backendFetchAuthed; api/users/me/password — needs a side effect
+// after success) can still share the two blocks that were byte-identical across all of them
+// (a real SonarCloud duplication finding, not a refactor for its own sake): validate a
+// parsed JSON body against a zod schema, and normalize a failed backend response's error
+// body into `{ message }`.
+export async function parseJsonBody<Body>(
+  request: Request,
+  schema: z.ZodType<Body>,
+): Promise<{ data: Body; error?: undefined } | { data?: undefined; error: NextResponse }> {
+  const raw = await request.json().catch(() => null);
+  const parsed = schema.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      error: NextResponse.json(
+        { message: parsed.error.issues[0]?.message ?? "Invalid input" },
+        { status: 400 },
+      ),
+    };
+  }
+  return { data: parsed.data };
+}
+
+export async function backendErrorResponse(
+  backendRes: Response,
+  fallbackErrorMessage: string,
+): Promise<NextResponse> {
+  const errorBody = (await backendRes
+    .json()
+    .catch(() => null)) as BackendErrorBody | null;
+  return NextResponse.json(
+    {
+      message: errorBody
+        ? firstErrorMessage(errorBody, fallbackErrorMessage)
+        : fallbackErrorMessage,
+    },
+    { status: backendRes.status },
+  );
+}
+
 interface ProxyToBackendOptions<Body> {
   method: "GET" | "POST" | "PATCH" | "DELETE";
   // The backend path this route proxies to, e.g. "/vm/assets". For a route with a dynamic
@@ -63,14 +104,8 @@ export function proxyToBackend<Body = undefined>(
 
     let body: string | undefined;
     if (options.schema) {
-      const raw = await request.json().catch(() => null);
-      const parsed = options.schema.safeParse(raw);
-      if (!parsed.success) {
-        return NextResponse.json(
-          { message: parsed.error.issues[0]?.message ?? "Invalid input" },
-          { status: 400 },
-        );
-      }
+      const parsed = await parseJsonBody(request, options.schema);
+      if (parsed.error) return parsed.error;
       body = JSON.stringify(parsed.data);
     }
 
@@ -84,17 +119,9 @@ export function proxyToBackend<Body = undefined>(
     });
 
     if (!backendRes.ok) {
-      const errorBody = (await backendRes
-        .json()
-        .catch(() => null)) as BackendErrorBody | null;
-      const fallback = options.fallbackErrorMessage ?? "Request failed";
-      return NextResponse.json(
-        {
-          message: errorBody
-            ? firstErrorMessage(errorBody, fallback)
-            : fallback,
-        },
-        { status: backendRes.status },
+      return backendErrorResponse(
+        backendRes,
+        options.fallbackErrorMessage ?? "Request failed",
       );
     }
 

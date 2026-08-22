@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { requireSession } from "@/lib/session";
 import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import { hasNextPage } from "@/lib/query-filters";
-import { NextOnlyPagination } from "@/components/security/next-only-pagination";
+import { ItemCountPagination } from "@/components/security/item-count-pagination";
 import { PlaybooksTable } from "@/components/soar/playbooks-table";
 import { ExecutionsTable } from "@/components/soar/executions-table";
 import { CreatePlaybookForm } from "@/components/soar/create-playbook-form";
@@ -81,11 +81,9 @@ export default async function SoarPage({
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-sm font-medium text-muted-foreground">
-            {executions.length} execution{executions.length === 1 ? "" : "s"} on
-            this page
-          </CardTitle>
-          <NextOnlyPagination
+          <ItemCountPagination
+            count={executions.length}
+            singular="execution"
             page={page}
             hasNextPage={hasNextPage(executions.length, PAGE_SIZE)}
             buildHref={(p) => `/soar?page=${p}`}

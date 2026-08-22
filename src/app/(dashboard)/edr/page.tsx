@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { requireSession } from "@/lib/session";
 import { backendFetchAuthedNoRefresh } from "@/lib/backend";
@@ -10,7 +10,8 @@ import {
 } from "@/lib/query-filters";
 import { resolveAssignableTenantUsers } from "@/lib/assignable-users";
 import { SEVERITY_ORDER, SEVERITY_LABEL } from "@/lib/severity";
-import { NextOnlyPagination } from "@/components/security/next-only-pagination";
+import { FilterFormActions } from "@/components/security/filter-form-actions";
+import { ItemCountPagination } from "@/components/security/item-count-pagination";
 import { DetectionsTable } from "@/components/edr/detections-table";
 import type { AssignableUser } from "@/components/security/assignment-control";
 import type { Severity } from "@/types/security";
@@ -106,24 +107,15 @@ export default async function EdrPage({
               />
               Assigned to me
             </label>
-            <Button type="submit" size="sm" variant="outline">
-              Apply
-            </Button>
-            {(sp.severity || sp.assignedToMe) && (
-              <Button
-                size="sm"
-                variant="ghost"
-                nativeButton={false}
-                render={<Link href="/edr">Clear filters</Link>}
-              />
-            )}
+            <FilterFormActions
+              hasActiveFilters={Boolean(sp.severity || sp.assignedToMe)}
+              clearHref="/edr"
+            />
           </form>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {detections.length} detection{detections.length === 1 ? "" : "s"}{" "}
-              on this page
-            </CardTitle>
-            <NextOnlyPagination
+            <ItemCountPagination
+              count={detections.length}
+              singular="detection"
               page={page}
               hasNextPage={hasNextPage(detections.length, PAGE_SIZE)}
               buildHref={(p) => buildModulePageHref("/edr", sp, p)}

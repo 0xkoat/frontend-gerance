@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { requireSession } from "@/lib/session";
 import { backendFetchAuthedNoRefresh } from "@/lib/backend";
@@ -9,8 +9,8 @@ import {
   hasNextPage,
 } from "@/lib/query-filters";
 import { resolveAssignableTenantUsers } from "@/lib/assignable-users";
-import { NextOnlyPagination } from "@/components/security/next-only-pagination";
 import { SeverityStatusFilterForm } from "@/components/security/severity-status-filter-form";
+import { ItemCountPagination } from "@/components/security/item-count-pagination";
 import { VulnerabilitiesTable } from "@/components/vm/vulnerabilities-table";
 import type { AssignableUser } from "@/components/security/assignment-control";
 import type { Severity } from "@/types/security";
@@ -93,11 +93,10 @@ export default async function VmPage({
             statusOptions={VM_STATUS_OPTIONS}
           />
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {vulnerabilities.length} vulnerabilit
-              {vulnerabilities.length === 1 ? "y" : "ies"} on this page
-            </CardTitle>
-            <NextOnlyPagination
+            <ItemCountPagination
+              count={vulnerabilities.length}
+              singular="vulnerability"
+              plural="vulnerabilities"
               page={page}
               hasNextPage={hasNextPage(vulnerabilities.length, PAGE_SIZE)}
               buildHref={(p) => buildModulePageHref("/vm", sp, p)}

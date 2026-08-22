@@ -1,4 +1,4 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { requireSession } from "@/lib/session";
 import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import {
@@ -7,8 +7,8 @@ import {
   hasNextPage,
 } from "@/lib/query-filters";
 import { resolveAssignableTenantUsers } from "@/lib/assignable-users";
-import { NextOnlyPagination } from "@/components/security/next-only-pagination";
 import { SeverityStatusFilterForm } from "@/components/security/severity-status-filter-form";
+import { ItemCountPagination } from "@/components/security/item-count-pagination";
 import { IncidentsTable } from "@/components/dfir/incidents-table";
 import type { AssignableUser } from "@/components/security/assignment-control";
 import type { Severity } from "@/types/security";
@@ -82,11 +82,9 @@ export default async function DfirPage({
             statusOptions={DFIR_STATUS_OPTIONS}
           />
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {incidents.length} incident{incidents.length === 1 ? "" : "s"} on
-              this page
-            </CardTitle>
-            <NextOnlyPagination
+            <ItemCountPagination
+              count={incidents.length}
+              singular="incident"
               page={page}
               hasNextPage={hasNextPage(incidents.length, PAGE_SIZE)}
               buildHref={(p) => buildModulePageHref("/dfir", sp, p)}

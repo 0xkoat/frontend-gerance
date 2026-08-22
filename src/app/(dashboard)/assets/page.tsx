@@ -1,6 +1,4 @@
-import Link from "next/link";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { requireSession } from "@/lib/session";
 import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import {
@@ -10,7 +8,8 @@ import {
 } from "@/lib/query-filters";
 import { resolveAssignableTenantUsers } from "@/lib/assignable-users";
 import { SEVERITY_ORDER, SEVERITY_LABEL } from "@/lib/severity";
-import { NextOnlyPagination } from "@/components/security/next-only-pagination";
+import { FilterFormActions } from "@/components/security/filter-form-actions";
+import { ItemCountPagination } from "@/components/security/item-count-pagination";
 import { FeedTable } from "@/components/assets/feed-table";
 import { LiveEvents } from "@/components/security/live-events";
 import type { Severity } from "@/types/security";
@@ -122,24 +121,17 @@ export default async function AssetsPage({
               />
               Assigned to me
             </label>
-            <Button type="submit" size="sm" variant="outline">
-              Apply
-            </Button>
-            {(sp.severity || sp.assignedToMe || sp.dateFrom || sp.dateTo) && (
-              <Button
-                size="sm"
-                variant="ghost"
-                nativeButton={false}
-                render={<Link href="/assets">Clear filters</Link>}
-              />
-            )}
+            <FilterFormActions
+              hasActiveFilters={Boolean(
+                sp.severity || sp.assignedToMe || sp.dateFrom || sp.dateTo,
+              )}
+              clearHref="/assets"
+            />
           </form>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              {entries.length} event{entries.length === 1 ? "" : "s"} on this
-              page
-            </CardTitle>
-            <NextOnlyPagination
+            <ItemCountPagination
+              count={entries.length}
+              singular="event"
               page={page}
               hasNextPage={hasNextPage(entries.length, PAGE_SIZE)}
               buildHref={(p) => buildModulePageHref("/assets", sp, p)}

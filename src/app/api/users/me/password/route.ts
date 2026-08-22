@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
-import {
-  backendFetchAuthed,
-  firstErrorMessage,
-  type BackendErrorBody,
-} from "@/lib/backend";
+import { backendFetchAuthed } from "@/lib/backend";
 import { getToken, setSessionCookie } from "@/lib/session";
 import { changePasswordSchema } from "@/lib/validations/auth";
+import { parseJsonBody, backendErrorResponse } from "@/lib/proxy-route";
 
 export async function PATCH(request: Request) {
   const token = await getToken();
@@ -13,14 +10,8 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
   }
 
-  const body = await request.json().catch(() => null);
-  const parsed = changePasswordSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { message: parsed.error.issues[0]?.message ?? "Invalid input" },
-      { status: 400 },
-    );
-  }
+  const parsed = await parseJsonBody(request, changePasswordSchema);
+  if (parsed.error) return parsed.error;
 
   const backendRes = await backendFetchAuthed("/users/me/password", {
     method: "PATCH",
@@ -31,17 +22,7 @@ export async function PATCH(request: Request) {
   });
 
   if (!backendRes.ok) {
-    const errorBody = (await backendRes
-      .json()
-      .catch(() => null)) as BackendErrorBody | null;
-    return NextResponse.json(
-      {
-        message: errorBody
-          ? firstErrorMessage(errorBody, "Could not change password")
-          : "Could not change password",
-      },
-      { status: backendRes.status },
-    );
+    return backendErrorResponse(backendRes, "Could not change password");
   }
 
   // mustChangePassword flips server-side, so the backend mints a fresh token reflecting

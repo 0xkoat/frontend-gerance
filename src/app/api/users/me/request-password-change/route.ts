@@ -1,35 +1,13 @@
-import { NextResponse } from "next/server";
-import {
-  backendFetchAuthed,
-  firstErrorMessage,
-  type BackendErrorBody,
-} from "@/lib/backend";
-import { getToken } from "@/lib/session";
+import { proxyToBackend } from "@/lib/proxy-route";
+import { requireAuthenticated } from "@/lib/api-guards";
 
-export async function POST() {
-  const token = await getToken();
-  if (!token) {
-    return NextResponse.json({ message: "Not authenticated" }, { status: 401 });
-  }
-
-  const backendRes = await backendFetchAuthed("/users/me/request-password-change", {
-    method: "POST",
-  });
-
-  if (!backendRes.ok) {
-    const errorBody = (await backendRes
-      .json()
-      .catch(() => null)) as BackendErrorBody | null;
-    return NextResponse.json(
-      {
-        message: errorBody
-          ? firstErrorMessage(errorBody, "Could not send the request")
-          : "Could not send the request",
-      },
-      { status: backendRes.status },
-    );
-  }
-
-  const data = (await backendRes.json()) as { message: string };
-  return NextResponse.json(data);
-}
+// Converted to proxyToBackend() — see users/route.ts's own comment for the full reasoning.
+// No body to validate (no schema), open to any authenticated tenant role — the backend
+// resolves the actual recipient (first-created Admin, or Super Admins if that Admin is the
+// one requesting) itself, this route just relays the request.
+export const POST = proxyToBackend({
+  method: "POST",
+  path: "/users/me/request-password-change",
+  guard: requireAuthenticated,
+  fallbackErrorMessage: "Could not send the request",
+});

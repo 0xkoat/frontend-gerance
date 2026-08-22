@@ -1,6 +1,5 @@
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { SEVERITY_ORDER, SEVERITY_LABEL } from "@/lib/severity";
+import { FilterFormActions } from "@/components/security/filter-form-actions";
 
 export interface StatusOption {
   value: string;
@@ -71,17 +70,7 @@ export function SeverityStatusFilterForm({
         />
         Assigned to me
       </label>
-      <Button type="submit" size="sm" variant="outline">
-        Apply
-      </Button>
-      {hasAnyFilter && (
-        <Button
-          size="sm"
-          variant="ghost"
-          nativeButton={false}
-          render={<Link href={basePath}>Clear filters</Link>}
-        />
-      )}
+      <FilterFormActions hasActiveFilters={hasAnyFilter} clearHref={basePath} />
     </form>
   );
 }
