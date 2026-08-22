@@ -12,6 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Already in .gitignore, but flat-config ESLint doesn't read .gitignore on its own —
+    // Playwright's own HTML report + trace-viewer bundles (vendored, minified third-party
+    // code like CodeMirror) get scanned as if they were real source otherwise, found live
+    // after running `npm run test:e2e` locally left one behind.
+    "playwright-report/**",
+    "test-results/**",
   ]),
 ]);
 

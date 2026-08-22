@@ -13,6 +13,16 @@
 # testing
 /coverage
 
+# Playwright e2e (e2e/ itself — the test source — IS tracked, same as
+# __tests__/; only its generated output and the live session cookies
+# auth.setup.ts writes are ignored here. See Phase 13's own note above
+# about __tests__/__mocks__/docs having been wrongly gitignored before —
+# don't repeat that by widening this pattern to catch e2e/ itself.)
+/e2e/.auth/
+/test-results/
+/playwright-report/
+/blob-report/
+
 # next.js
 /.next/
 /out/
@@ -40,6 +50,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-__mocks__
-__tests__
-docs
+
+AGENTS.md
+.claude
+.remember
+.swc
+/docs

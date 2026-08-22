@@ -1,0 +1,55 @@
+name: Deploy
+
+# Same pattern as backend-gerance's deploy.yml (see that file's comment for the full
+# reasoning) — triggered by this repo's own build.yml succeeding on main, plus a manual
+# button. Deploys only the `frontend` service; never touches `postgres`, `migrate`, or
+# `backend`, which belong to the backend-gerance repo's own pipeline (or, for `postgres`, a
+# one-time manual step — see DOCKERIZATION_TODO.md in gerance-platform's root).
+#
+# Assumes docker-compose.image.yml + a real .env already exist on the VM at
+# $VM_DEPLOY_PATH, and that `backend` is already up and healthy there — `frontend`'s
+# `depends_on: backend: condition: service_healthy` in that file will otherwise block this
+# from ever coming up. Fine for steady-state redeploys; on a brand-new VM, deploy
+# backend-gerance first.
+
+on:
+  workflow_run:
+    workflows: [Build]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+env:
+  VM_DEPLOY_PATH: /opt/gerance-platform
+  REGISTRY: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy frontend over SSH
+        uses: appleboy/ssh-action@0ff4204d59e8e51228ff73bce53f80d53301dee2 # v1
+        with:
+          host: ${{ secrets.AZURE_VM_HOST }}
+          username: ${{ secrets.AZURE_VM_USER }}
+          key: ${{ secrets.AZURE_VM_SSH_KEY }}
+          envs: REGISTRY
+          script: |
+            set -e
+            # Only needed if the GHCR packages are kept private (the default — see the
+            # secrets list). Skip this block entirely if you've made them public instead.
+            echo "${{ secrets.GHCR_PAT }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+
+            # Hardcoded rather than $VM_DEPLOY_PATH — appleboy/ssh-action only forwards env
+            # vars named in `envs:` above into the remote shell (REGISTRY only), so
+            # $VM_DEPLOY_PATH was silently empty on the VM, `cd ""` was a no-op, and the
+            # compose file lookup below resolved against the SSH login's home directory
+            # instead of /opt/gerance-platform. Same real bug hit and fixed in
+            # backend-gerance's deploy.yml (2026-08-22) — this file was written from the
+            # same template and inherited it; fixed here before it could repeat the failure.
+            cd /opt/gerance-platform
+            export TAG="${{ github.event.workflow_run.head_sha || github.sha }}"
+            docker compose -f docker-compose.image.yml pull frontend
+            docker compose -f docker-compose.image.yml up -d frontend

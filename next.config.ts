@@ -58,6 +58,7 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   // Removes the `X-Powered-By: Next.js` header Next sends by default — minor
   // framework-fingerprinting info leak, no reason to keep it.
+  output: "standalone",
   poweredByHeader: false,
   async headers() {
     return [
