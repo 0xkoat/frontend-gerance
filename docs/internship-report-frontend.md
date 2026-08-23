@@ -1313,6 +1313,217 @@ Full verification re-run after every change, not just the touched files: 289/289
 `tsc --noEmit`/`eslint --max-warnings=0`/`next build` all clean, and `prettier --check` back
 to the true 9-file baseline the corrected CLAUDE.md claim now accurately describes.
 
+### 3.30 Closing the SonarCloud duplication gate (2026-08-22)
+
+SonarCloud's "Duplication on New Code" quality gate (`≤3%` required) reported 3.1% once this
+repo was first scanned for real — a local `jscpd` run was used to find the actual duplicated
+blocks rather than guessing which files were the problem. Two real sources: nine of the ten
+mutation Route Handlers under `/api/{users,tenants}/**` had been hand-rolled independently of
+Phase 2's `proxyToBackend()` factory (built for the six security modules, never retrofitted
+onto the routes that predated it), and six near-identical module list pages
+(`(dashboard)/{vm,siem,dfir,soar,edr,cti,assets}/page.tsx`) each repeated the same pagination
+footer and filter-form action-button JSX inline.
+
+- **Route conversions**: `src/app/api/{users,tenants}/route.ts`,
+  `users/[id]/role/route.ts`, `users/[id]/reset-password/route.ts`, and
+  `users/me/request-password-change/route.ts` converted to `proxyToBackend()`. Three routes
+  with genuinely custom auth-adjacent flows (`login`, `forgot-password`,
+  `users/me/password`) can't use the factory as-is (login needs the CSRF Content-Type guard
+  before parsing, the password routes have bespoke success handling) — rather than leave
+  them duplicating logic anyway, `proxy-route.ts` gained two exported helpers,
+  `parseJsonBody<Body>()` and `backendErrorResponse()`, factored out of `proxyToBackend()`'s
+  own internals, and all three hand-rolled routes were refactored to call them instead of
+  keeping inline copies.
+- **Shared UI extraction**: `src/lib/pluralize.ts` (`pluralize(count, singular, plural?)`),
+  `src/components/security/item-count-pagination.tsx` (`ItemCountPagination`), and
+  `src/components/security/filter-form-actions.tsx` (`FilterFormActions`) — all six module
+  pages plus `severity-status-filter-form.tsx` refactored to use them, with the unused
+  imports (`CardTitle`, `Button`, `Link`, the old `NextOnlyPagination`) each page had been
+  carrying removed in the same pass.
+- One test breakage surfaced by the route conversion: `tenants-routes.test.ts`'s three
+  `GET()` calls had been invoked with no arguments, which `proxyToBackend()`'s generated
+  handler signature no longer tolerates (the hand-rolled version had). Fixed with a small
+  `getReq()` helper building a real `Request` object for the three call sites.
+- Verified: local `jscpd` duplication count dropped from 118 to 16 candidate lines, the full
+  289-test suite still green (no test depended on which code path a route's logic lived in),
+  `tsc --noEmit` clean, and the actual SonarCloud gate re-run afterward, which is what
+  confirmed the fix rather than the local `jscpd` number alone — the gate passed with margin,
+  not just under the 3% line.
+
+### 3.31 CI-hardening pass: SHA-pinned actions, per-job permissions (2026-08-22)
+
+A `/security-review`-style pass over both repos' GitHub Actions workflows, done as part of
+firming up the CI/CD pipeline before relying on it for real deploys (§3.32 below): every
+third-party action reference (`actions/checkout@v4`-style floating tags) pinned to a full
+commit SHA, and each job given an explicit, minimal `permissions:` block instead of
+inheriting the repo's default token scope. Floating tags are a real supply-chain exposure —
+a compromised or re-tagged upstream action would silently run with whatever the workflow's
+ambient token scope allows the next time CI fires — and an unscoped default token grants far
+more than any of these jobs (build, scan, deploy) actually needs. This pass on the frontend
+landed and was pushed the same day; the equivalent backend-side edit was made but, as of
+2026-08-22, still sat uncommitted in the backend's working tree (see §4.26's own account for
+why this mattered when tracking what had actually shipped).
+
+### 3.32 Dockerization and CI/CD pipeline (2026-08-21 to 2026-08-22)
+
+Mirrors the backend's own account in `backend/docs/internship-report-backend.md`'s §4.25/
+§4.26 — full phase-by-phase log lives in the repo root's `DOCKERIZATION_TODO.md` and
+`CICD_SETUP.md`, this is the frontend-specific summary.
+
+`frontend/Dockerfile` is a multi-stage build using Next's `output: 'standalone'` — `public/`,
+`.next/standalone`, and `.next/static` copied separately into the runner per Next's own
+standalone-output contract, `frontend/.dockerignore` excluding (among other things) an
+859MB stale local `.next/` directory, the same class of stale-build-cache risk as the
+backend's `tsconfig.build.tsbuildinfo` issue. One real bug hit and fixed while building it:
+`next build`'s "Collecting page data" phase actually evaluates Route Handler modules at
+build time, and `src/lib/backend.ts` throws at module scope if `BACKEND_URL` is unset — the
+build needs *a* value present even though it's a server-only runtime config that must still
+be supplied for real at `docker run`/compose time. Fixed with a build-`ARG`+`ENV` placeholder
+scoped to the build stage only, not redeclared in the runner. Live-tested wired to the real
+containerized backend over Docker's network: login page loads, an empty-body login correctly
+proxies through to the backend's real validation, and a full real login (seeded Super Admin)
+succeeds end to end with correct `HttpOnly`+`Secure` cookies — all still true only because
+that specific test ran through `localhost`-mapped ports, a caveat that mattered again once
+this container left the laptop (§3.33). Final image size: **390MB**, almost entirely the
+shared `node:22-slim` base plus a genuinely small ~48MB of actual app content (standalone
+output + pruned `node_modules` + static assets) — nothing to trim there.
+
+`.github/workflows/build.yml` (SonarCloud scan on every push/PR, then — gated to a real push
+on `main` — build+push `gerance-frontend` to GHCR) and `deploy.yml` (SSH-deploys `frontend`
+only to the Azure VM, triggered by `build.yml` succeeding on `main`, plus a manual
+`workflow_dispatch`) now sit next to the frontend's test workflow. `SONAR_TOKEN`,
+`AZURE_VM_HOST`/`_USER`/`_SSH_KEY`, and `GHCR_USERNAME`/`GHCR_PAT` are the same six secrets
+documented once in the repo root's `CICD_SETUP.md`, added to both repos independently (two
+personal-account repos, no org-level shared-secrets option).
+
+### 3.33 Real-deployment debugging saga (2026-08-22)
+
+Everything below was found only by actually running the pipeline against real Azure
+infrastructure — none of it was visible from reading the workflow YAML or the compose file in
+isolation. Recorded in the order it was hit, since several fixes only became necessary once
+an earlier one was in place.
+
+1. **SSH `cd` no-op.** Same root cause as the backend's §4.26: `appleboy/ssh-action`'s
+   `envs:` list didn't include `VM_DEPLOY_PATH`, so the remote `cd` silently did nothing.
+   Fixed the same way, hardcoding `cd /opt/gerance-platform`.
+2. **Docker build failing on `COPY --from=builder /app/public ./public`.** `public/` was
+   genuinely empty in this repo, and git never tracks empty directories at all — not a
+   `.gitignore` issue, there was simply nothing to check out on a fresh CI clone, so the
+   `COPY` step failed outright (`'/app/public': not found`) even though the directory
+   existed and worked fine on every local machine that had ever created a file in it by
+   hand. Fixed with a `public/.gitkeep` placeholder, verified via a real local `docker
+   build` before trusting the CI fix.
+3. **Cross-repo `TAG` collision.** Same bug and same fix as backend §4.26 —
+   `docker-compose.image.yml`'s single shared `TAG` var meant a frontend deploy's own commit
+   SHA was used to try to pull a same-SHA-tagged `gerance-backend` image that never existed.
+   Split into `BACKEND_TAG`/`FRONTEND_TAG`; frontend's `deploy.yml` now exports
+   `FRONTEND_TAG` specifically.
+4. **`ERR_CONNECTION_TIMED_OUT` reaching the deployed app in a browser.** Not a code bug —
+   the Azure NSG (a cloud-level firewall, separate from container/OS-level port binding) had
+   only ever had port 22 open. The frontend container was correctly `0.0.0.0:3001`-bound and
+   healthy the whole time; nothing reached it because the network security group dropped the
+   packet before it got to the VM. Resolved by a deliberate infra decision (confirmed with
+   the user rather than assumed): open port 3001 publicly, documented in the repo root's
+   `CICD_SETUP.md` alongside the alternative that was traded away (an SSH tunnel, more
+   locked-down but not the "just load the URL" experience wanted for a supervisor demo).
+5. **"It loaded but completely messed up" — unstyled page.** Traced to `next.config.ts`'s
+   Content-Security-Policy `upgrade-insecure-requests` directive, gated on `isProd`
+   (effectively `NODE_ENV === "production"`). That directive forces the browser to rewrite
+   **every** sub-resource request — including relative URLs for CSS/JS/fonts — to `https://`,
+   regardless of what protocol the top-level page itself loaded over. On a real production
+   build served over plain HTTP on a real IP, every asset request got silently rewritten to
+   an HTTPS URL nothing was listening on, breaking the entire page's styling and scripts.
+   This had never surfaced in any earlier local test because `localhost`/loopback origins get
+   a specific exemption from this directive, the same exemption behind the cookie bugs below
+   — every prior check in this project had unknowingly relied on it. Fixed by introducing a
+   new, explicit `HTTPS_ENABLED` env var (default unset/false), decoupled entirely from
+   `isProd`/`NODE_ENV`, gating both the CSP directive and the `Strict-Transport-Security`
+   header. Verified via a real local Docker rebuild+run confirming the response headers
+   actually changed, then live against the VM.
+6. **Login still failing after the CSP fix — the cookie `Secure`-flag bug, found in three
+   separate places.** Prompted directly by the user asking "are you sure this is the final
+   fix?" rather than accepting the CSP fix as sufficient — an exhaustive grep for every other
+   `NODE_ENV`/`isProd` usage across both repos turned up two more instances of the exact same
+   bug class: `secops_token`'s `secure:` flag in `src/lib/session.ts`, and the backend's own
+   `refresh_token` cookie (`backend/src/auth/auth.controller.ts`, see that report's §4.27).
+   Both fixed the same way, gated on the new `HTTPS_ENABLED` var instead. Even after all
+   three fixes, the full e2e `auth.setup.ts` login flow still failed for all four seeded
+   roles — direct `curl` inspection of the actual `Set-Cookie` response headers (rather than
+   trusting the code change) showed `Secure` was *still* present on both cookies. **A
+   fourth, more operative instance** was found in `src/lib/backend.ts`'s
+   `applyRefreshCookie()` — this function reconstructs the `refresh_token` cookie itself,
+   independently of the backend's own `Set-Cookie` header, specifically because the frontend
+   relays that cookie manually rather than proxying it through transparently (see the
+   "Frontend auth architecture" decisions above); it had the identical `NODE_ENV`-gated
+   `secure:` flag, and this was the actual code path the login flow used through the Route
+   Handler proxy. Fixed and reverified via `curl` (both cookies' `Secure` flag gone) before
+   rerunning e2e.
+
+### 3.34 The `router.refresh()` staleness bug: verified live, not dismissed as test flakiness (2026-08-22)
+
+After the cookie fixes, a full Playwright run against the real deployed VM (via a new
+`E2E_BASE_URL` override in `playwright.config.ts`, default unchanged at `localhost:3001`)
+passed 15 of 17 tests — the two failures were the SIEM alert self-assign-then-escalate test
+and the VM vulnerability status-lifecycle test, both exercising a mutate-then-immediately-
+read-back pattern. Asked directly whether this was safe to wave off given the tests'
+purpose ("if I want to showcase the app to my supervisor it has to work"), so it was
+investigated as a real defect rather than characterized as test fragility without
+verification — this is the most rigorously chased-down bug in this repo's history:
+
+1. Ruled out React reconciliation as the cause first: confirmed every affected table row
+   uses a stable `key={record.id}`, not an array index, so a reconciliation bug from a
+   changing key was not in play.
+2. Confirmed via direct backend API calls (bypassing the UI entirely) that the mutations
+   themselves persist correctly — the assign and status-change writes were genuinely landing
+   in Postgres. The bug was not a backend defect.
+3. Captured real network traffic and confirmed `router.refresh()`'s resulting RSC request
+   does reach the server and does come back with a genuinely fresh, uncached
+   (`cache-control: no-store`) payload — the server was serving correct, current data.
+4. Built a controlled before/after comparison: triggered the same mutation, then compared a
+   `router.refresh()` (soft, client-side RSC refetch) against a full `window.location.reload()`
+   (hard reload) on the identical row. The hard reload always showed the correct, updated
+   state; the soft refresh did not, for these three components specifically —
+   `AssignmentControl`, `StatusTransitionMenu`, and `VulnerabilityStatusMenu` — while
+   `router.refresh()` worked correctly elsewhere in the same app (CTI/SOAR's create/delete
+   flows use the identical pattern and were never affected). This proved the bug was
+   client-side, isolated to these three components, and specifically about Next's client
+   Router Cache not applying fresh data to already-mounted client components in this
+   particular case — not fully root-caused down into Next's own internals (why these three
+   and not CTI/SOAR was not conclusively resolved), stated honestly as a verified-reliable
+   workaround rather than a fully understood fix.
+5. Fixed by switching all three components from `useRouter().refresh()` to a real hard
+   `window.location.reload()`, via a new `src/lib/reload-page.ts` module (`reloadPage()`) —
+   a real module boundary rather than calling `window.location.reload()` inline, specifically
+   so it could be mocked in tests (see below).
+6. Test fallout, three separate jsdom obstacles worked through in sequence:
+   `Object.defineProperty` on the whole `window.location` object failed ("Cannot redefine
+   property: location"); direct assignment to `.reload` failed ("Cannot assign to read only
+   property"); and `Object.defineProperty` on just `.reload` failed too, since this project's
+   jsdom version deliberately makes the *existing* descriptor non-configurable (to catch
+   accidental real-navigation attempts in tests) regardless of what the new descriptor
+   claims. Abandoned DOM-mocking entirely in favor of the module-boundary approach in point
+   5, then hit a second, narrower obstacle: `jest.mock("@/lib/reload-page", ...)` failed with
+   "Cannot find module," despite a plain `import` of the same `@/` alias path resolving fine
+   — no precedent anywhere in this codebase for `jest.mock()` combined with the `@/` alias,
+   since Jest's module-string resolution for `jest.mock()` doesn't go through `next/jest`'s
+   auto-generated `moduleNameMapper` the same way a normal `import`/`require` does. Fixed by
+   using a relative path (`"../src/lib/reload-page"`) specifically inside the three
+   `jest.mock()` calls, keeping the `@/` alias for the real `import` in each component.
+   `assignment-control.test.tsx`, `status-transition-menu.test.tsx`, and
+   `vulnerability-status-menu.test.tsx` all updated to assert against the mocked `reload()`
+   call instead of a `router.refresh()` spy.
+7. Full suite re-verified after the fix: 289/289 tests, `tsc --noEmit`/`eslint`/`next build`
+   all clean. Playwright re-run against the same live VM: **17/17 passed** — the full suite,
+   including both previously-failing tests, against the real deployment.
+
+### 3.35 Final git-hygiene sweep (2026-08-22)
+
+Prompted by an open "is anything else missing" question rather than a specific symptom.
+`git status` swept on both repos: frontend was clean; backend had a modified,
+still-tracked `tsconfig.tsbuildinfo` (TypeScript's regenerated incremental-build cache) with
+no `.gitignore` entry for it — see the backend report's §4.27 for the fix. No equivalent
+issue found on the frontend side.
+
 ---
 
 ## 4. Current State Summary
@@ -1415,6 +1626,16 @@ plan to begin with):
 - No Dockerfile on either side of the repo, no pre-commit hooks on either side — noted as
   project-wide gaps, not frontend-specific ones.
 
+**Correction, 2026-08-19/2026-08-22 — this whole "Explicitly deferred" list is now stale,
+left unstruck per this file's own convention rather than rewritten.** Playwright e2e now
+exists (17 tests, §Testing backlog below), CI now runs on both repos (`build.yml`, see
+below), and both repos have a real Dockerfile — see §3.30 through §3.35 above for the full
+account of what shipped (SonarCloud gate closure, CI-hardening, Dockerization, the CI/CD
+pipeline, and the real-Azure-VM deployment saga) and `frontend/CLAUDE.md`'s own "Platform
+readiness" entry for the current, accurate summary. What's genuinely still true from this
+list: no husky/pre-commit hooks on either repo, and `tsc --noEmit`/`prettier --check` still
+aren't run as CI steps (only `lint`+`test` are).
+
 ---
 
 ## 5. Key Engineering Decisions & Rationale (quick reference)
@@ -1445,3 +1666,21 @@ that fixing one instance of a bug class doesn't sweep the codebase for siblings,
 separate, explicit step. And the backend e2e regression was only caught because "this sandbox
 has no database, so e2e can't be re-verified" was itself checked rather than assumed true —
 it turned out both e2e spec files mock `PrismaService` and needed no live connection at all.
+
+A third theme, specific to the deployment work in §3.30-§3.35: **a local `localhost` origin
+quietly exempts a project from an entire class of bug it hasn't actually fixed.** Every prior
+round of testing in this repo — the CSP/HSTS headers, three separate cookies' `Secure` flag —
+had been implicitly relying on browsers' (and Node's own `fetch`) special-case trust of
+`localhost`/loopback origins, which silently masked all four instances of the same underlying
+bug (`NODE_ENV=production` used as a proxy for "this is actually served over real TLS") until
+the app was deployed to a real IP with no TLS in front of it. None of these were caught by
+`tsc`, `eslint`, or the test suite — they only surfaced by testing against a genuinely
+different network topology than every prior verification had used, and only the first of the
+four instances (the CSP directive) was found before the user explicitly pushed back on
+accepting a partial fix ("are you sure this is the final fix?"), which is what prompted the
+exhaustive grep that found the other three. The `router.refresh()` staleness bug (§3.34)
+reinforced the same discipline from a different angle: a symptom that only appears in a real
+deployed environment is not automatically test fragility, and the only way to tell the
+difference is the same one used throughout this project for security findings — verify with
+direct evidence (API calls, network captures, a controlled before/after comparison) before
+either dismissing or claiming to have fixed it.
