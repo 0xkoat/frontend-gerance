@@ -42,9 +42,9 @@ redesign" section for the full phase plan (roles, module launch, ticketing).
   reset password (`ResetAdminPasswordButton` now takes `endpoint`/`description`), delete;
   BFF routes under `api/integration-admins/**`, sidebar link.
 - Layout treats Integration Admin like Super Admin (no tenant, no `/users/me`); dashboard
-  has an Integration Admin placeholder. Known gap: the Super Admin red dot stays on the
-  Tenants link even when the pending request is an Integration Admin's (the backend
-  returns one combined `hasPending`); the Integration Admins table still shows the badge.
+  has an Integration Admin placeholder. The Super Admin's red dots are split per source
+  (`9aa403e`, backend `9552f68`): Tenants for a first Admin's request, Integration Admins
+  for an Integration Admin's.
 - Playwright: `demo-viewer` storage state replaced by `demo-integration-admin`
   (`integration.admin@secops.demo`); `rbac.spec` covers Analyst + Integration Admin,
   `users.spec` raises an Analyst from L1 to L3.
