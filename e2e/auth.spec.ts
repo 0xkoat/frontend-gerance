@@ -27,7 +27,9 @@ test.describe("Auth", () => {
     await page.locator("#password").fill(DEMO_ADMIN.password);
     await page.getByRole("button", { name: "Sign in to SecOps" }).click();
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
-    await expect(page.getByText("Security Overview")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Overview", exact: true }),
+    ).toBeVisible();
   });
 
   test("logout clears the session and protected routes redirect to /login", async ({
