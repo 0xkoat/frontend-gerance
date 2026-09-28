@@ -26,6 +26,13 @@ test.describe("Users (Admin)", () => {
       await expect(
         page.locator("tbody tr").filter({ hasText: userName }),
       ).toBeVisible({ timeout: 10_000 });
+      // The create form defaults to Analyst L1.
+      await expect(
+        page
+          .locator("tbody tr")
+          .filter({ hasText: userName })
+          .getByText("Analyst · L1"),
+      ).toBeVisible();
 
       // --- new account is forced through first-login password change ---
       const { context: newUserContext, page: newUserPage } =
@@ -44,14 +51,17 @@ test.describe("Users (Admin)", () => {
       ).toBeVisible();
       userName = renamedTo;
 
-      // --- change role ---
+      // --- change analyst level ---
       await openRowMenu(page, userName);
       await page.getByRole("menuitem", { name: "Change role" }).click();
-      await page.locator("[role=dialog]").getByRole("combobox").click();
-      await page.getByRole("option", { name: "Analyst" }).click();
+      await page.locator("[role=dialog]").getByLabel("Analyst level").click();
+      await page.getByRole("option", { name: "L3" }).click();
       await clickAndWaitForDialogClose(page, "Change role");
       await expect(
-        page.locator("tbody tr").filter({ hasText: userName }).getByText("ANALYST"),
+        page
+          .locator("tbody tr")
+          .filter({ hasText: userName })
+          .getByText("Analyst · L3"),
       ).toBeVisible();
 
       // --- reset password, then confirm it forces a change again ---

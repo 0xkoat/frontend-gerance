@@ -31,11 +31,14 @@ export const DEMO_CO_ADMIN = {
   email: "francesco_streich@crooks-and-sons-rela.demo",
   password: DEMO_PASSWORD,
 };
+// The first tenant's L1 Analyst (seed-modules.ts seeds one Analyst per level, L1 first).
 export const DEMO_ANALYST = {
   email: "laverne.johnson75@crooks-and-sons-rela.demo",
   password: DEMO_PASSWORD,
 };
-export const DEMO_VIEWER = {
-  email: "joey.effertz@crooks-and-sons-rela.demo",
+
+// Platform-wide, fixed (not faker-generated) email — see seed-modules.ts.
+export const DEMO_INTEGRATION_ADMIN = {
+  email: "integration.admin@secops.demo",
   password: DEMO_PASSWORD,
 };

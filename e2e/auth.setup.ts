@@ -4,7 +4,7 @@ import {
   SUPER_ADMIN,
   DEMO_ADMIN,
   DEMO_ANALYST,
-  DEMO_VIEWER,
+  DEMO_INTEGRATION_ADMIN,
 } from "./fixtures/accounts";
 
 // `POST /auth/login` shares a 5-requests-per-60s-per-IP budget across the
@@ -37,7 +37,13 @@ setup("authenticate as demo analyst", async ({ page }) => {
   await page.context().storageState({ path: "e2e/.auth/demo-analyst.json" });
 });
 
-setup("authenticate as demo viewer", async ({ page }) => {
-  await login(page, DEMO_VIEWER.email, DEMO_VIEWER.password);
-  await page.context().storageState({ path: "e2e/.auth/demo-viewer.json" });
+setup("authenticate as demo integration admin", async ({ page }) => {
+  await login(
+    page,
+    DEMO_INTEGRATION_ADMIN.email,
+    DEMO_INTEGRATION_ADMIN.password,
+  );
+  await page
+    .context()
+    .storageState({ path: "e2e/.auth/demo-integration-admin.json" });
 });
