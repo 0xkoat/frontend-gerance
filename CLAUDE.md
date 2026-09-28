@@ -52,6 +52,23 @@ redesign" section for the full phase plan (roles, module launch, ticketing).
   reseeded dev DB (the two auth.spec tests needed a rerun after the login rate limit was
   tripped by manual API checks run just before the suite).
 
+**Phase 3 done 2026-09-28** (commits `ea3a0bd`, `ab62319`, `221f034`, `20dac78`, `77449d8`):
+- Super Admin tenant-module UI lost the JSON config editor (activate = pick a module; edit =
+  toggle Active; table shows the minimum level).
+- `(dashboard)/module-endpoints` (Integration Admin edits protocol/host/port/path and runs
+  Test connection; Super Admin read-only), `(dashboard)/module-access` (tenant Admin sets
+  per-module minimum level, sees the last 50 launches), dashboard module tiles and a sidebar
+  Modules section for Admins/Analysts. Opening a module POSTs the launch route and does a
+  same-tab `navigateTo(url)` (`lib/navigate.ts`, mockable) — plain redirect, no credentials.
+- Test gotcha found: `jest.mock("@/...")` doesn't resolve here — the `@/` alias is rewritten
+  in import statements at compile time, not inside `jest.mock()` strings. Use a relative
+  path in `jest.mock` (see `__tests__/module-tiles.test.tsx`).
+- Verified: 26 suites / 167 Jest tests, `next build`, `e2e/modules.spec.ts` 7/7 (real
+  redirect to the configured IP:PORT, level gating both ways). Full Playwright run: 13/15
+  then the two failures passed on rerun — `tenants.spec` rename-dialog close is a known
+  intermittent flake (also seen before Phase 3; the PATCH itself returns in <100 ms, the
+  trace shows the dialog element lingering), worth a dedicated look.
+
 Everything below describing module pages, the asset feed, live events, severity styling or
 the "Backend to frontend adaptation plan" is **historical** — built, then removed in v2.
 
