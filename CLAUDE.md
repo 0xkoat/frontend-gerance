@@ -31,6 +31,27 @@ redesign" section for the full phase plan (roles, module launch, ticketing).
   specs time out on first compile). `e2e/fixtures/accounts.ts` still matches the current
   dev DB but will need regenerating after the next fresh `seed:demo` (see backend note).
 
+**Phase 2 done 2026-09-28** (commits `b849ed2`, `f369b75`, `1e06c8f`, `da95a7a`, `e02312b`):
+- `types/auth.ts`: `INTEGRATION_ADMIN` added, `VIEWER` removed, `AnalystLevel` added;
+  `SessionClaims.analystLevel` decoded from the new JWT claim (null for old tokens).
+- `lib/roles.ts`'s `roleLabel()` renders "Analyst · L2"-style labels. `RoleLevelFields`
+  (`components/users/role-level-fields.tsx`) is the shared role + level picker used by
+  `CreateUserForm` and the change-role dialog; `lib/validations/users.ts` refines the
+  Analyst-has-a-level rule the same way the backend does.
+- `(dashboard)/integration-admins` (Super Admin): list with pending-reset badge, create,
+  reset password (`ResetAdminPasswordButton` now takes `endpoint`/`description`), delete;
+  BFF routes under `api/integration-admins/**`, sidebar link.
+- Layout treats Integration Admin like Super Admin (no tenant, no `/users/me`); dashboard
+  has an Integration Admin placeholder. Known gap: the Super Admin red dot stays on the
+  Tenants link even when the pending request is an Integration Admin's (the backend
+  returns one combined `hasPending`); the Integration Admins table still shows the badge.
+- Playwright: `demo-viewer` storage state replaced by `demo-integration-admin`
+  (`integration.admin@secops.demo`); `rbac.spec` covers Analyst + Integration Admin,
+  `users.spec` raises an Analyst from L1 to L3.
+- Verified: 23 suites / 148 Jest tests, `next build`, Playwright 12/12 against a freshly
+  reseeded dev DB (the two auth.spec tests needed a rerun after the login rate limit was
+  tripped by manual API checks run just before the suite).
+
 Everything below describing module pages, the asset feed, live events, severity styling or
 the "Backend to frontend adaptation plan" is **historical** — built, then removed in v2.
 
