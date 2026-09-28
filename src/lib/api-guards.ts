@@ -55,3 +55,11 @@ export const requireSuperAdmin = () => requireRole(UserRole.SUPER_ADMIN);
 // (UsersService.resetSoleAdminPassword enforces that; this guard is just the fast-fail).
 export const requireAdminOrSuperAdmin = () =>
   requireRole(UserRole.ADMIN, UserRole.SUPER_ADMIN);
+// Module access (v2 Phase 3): tenant members launch modules, the Integration Admin owns
+// the platform-wide endpoints (a Super Admin may read them).
+export const requireTenantMember = () =>
+  requireRole(UserRole.ADMIN, UserRole.ANALYST);
+export const requireIntegrationAdmin = () =>
+  requireRole(UserRole.INTEGRATION_ADMIN);
+export const requireIntegrationOrSuperAdmin = () =>
+  requireRole(UserRole.INTEGRATION_ADMIN, UserRole.SUPER_ADMIN);

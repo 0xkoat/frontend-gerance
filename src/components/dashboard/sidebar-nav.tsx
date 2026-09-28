@@ -8,6 +8,7 @@ import {
   Users,
   Building2,
   Cable,
+  Network,
   LogOut,
   Settings,
 } from "lucide-react";
@@ -104,6 +105,16 @@ export function SidebarNav({
             >
               <Cable className="size-4" />
               Integration Admins
+            </NavLink>
+          )}
+          {(role === UserRole.INTEGRATION_ADMIN ||
+            role === UserRole.SUPER_ADMIN) && (
+            <NavLink
+              href="/module-endpoints"
+              active={pathname === "/module-endpoints"}
+            >
+              <Network className="size-4" />
+              Module endpoints
             </NavLink>
           )}
         </div>

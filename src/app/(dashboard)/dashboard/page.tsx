@@ -86,14 +86,17 @@ function TenantOverview() {
   );
 }
 
-// Placeholder until module endpoint management (Phase 3) and the module ticket inbox
-// (Phase 4) exist — the only two things this role does.
+// The module ticket inbox joins this in Phase 4 — the other half of this role.
 function IntegrationAdminOverview() {
   return (
     <div className="flex flex-col gap-2">
       <h1 className="text-xl font-semibold tracking-tight">Overview</h1>
       <p className="text-sm text-muted-foreground">
-        Module endpoint settings and module tickets will be available here.
+        Set where each module lives and check it&apos;s reachable on the{" "}
+        <Link href="/module-endpoints" className="underline underline-offset-4">
+          module endpoints
+        </Link>{" "}
+        page. Module tickets will appear here.
       </p>
     </div>
   );
