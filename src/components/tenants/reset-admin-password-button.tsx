@@ -5,7 +5,12 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Field, FieldGroup, FieldLabel, FieldError } from "@/components/ui/field";
+import {
+  Field,
+  FieldGroup,
+  FieldLabel,
+  FieldError,
+} from "@/components/ui/field";
 import {
   Dialog,
   DialogContent,
@@ -17,16 +22,24 @@ import {
 } from "@/components/ui/dialog";
 import { resetPasswordSchema } from "@/lib/validations/users";
 
-// Reuses POST /api/users/:id/reset-password — the backend now accepts a Super Admin caller
-// there too, but only when the target Admin has no co-Admin in their tenant (see
+const SOLE_ADMIN_DESCRIPTION =
+  "This tenant has no other Admin to do this instead. Sets a new password directly — they'll need to change it on their next login.";
+
+// By default reuses POST /api/users/:id/reset-password — the backend accepts a Super Admin
+// caller there too, but only when the target Admin has no co-Admin in their tenant (see
 // UsersService.resetSoleAdminPassword); TenantAdminsTable only renders this button in that
 // exact case, so the request is expected to succeed, not just attempted speculatively.
+// IntegrationAdminsTable passes its own endpoint and description.
 export function ResetAdminPasswordButton({
   adminId,
   adminName,
+  endpoint = `/api/users/${adminId}/reset-password`,
+  description = SOLE_ADMIN_DESCRIPTION,
 }: {
   adminId: string;
   adminName: string;
+  endpoint?: string;
+  description?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -50,7 +63,7 @@ export function ResetAdminPasswordButton({
 
     setPending(true);
     try {
-      const res = await fetch(`/api/users/${adminId}/reset-password`, {
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(parsed.data),
@@ -61,7 +74,8 @@ export function ResetAdminPasswordButton({
         return;
       }
       toast.success(`${adminName}'s password was reset`, {
-        description: "They'll be asked to set their own password on next login.",
+        description:
+          "They'll be asked to set their own password on next login.",
       });
       setOpen(false);
       router.refresh();
@@ -84,11 +98,7 @@ export function ResetAdminPasswordButton({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Reset {adminName}&apos;s password</DialogTitle>
-          <DialogDescription>
-            This tenant has no other Admin to do this instead. Sets a new
-            password directly — they&apos;ll need to change it on their next
-            login.
-          </DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} noValidate>
           <FieldGroup>

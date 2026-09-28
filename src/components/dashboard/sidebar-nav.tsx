@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Users,
   Building2,
+  Cable,
   LogOut,
   Settings,
 } from "lucide-react";
@@ -89,6 +90,15 @@ export function SidebarNav({
             >
               <Building2 className="size-4" />
               Tenants
+            </NavLink>
+          )}
+          {role === UserRole.SUPER_ADMIN && (
+            <NavLink
+              href="/integration-admins"
+              active={pathname === "/integration-admins"}
+            >
+              <Cable className="size-4" />
+              Integration Admins
             </NavLink>
           )}
         </div>
