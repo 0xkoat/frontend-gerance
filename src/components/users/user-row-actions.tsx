@@ -51,17 +51,16 @@ import {
 } from "@/lib/validations/users";
 import { fieldErrorsFromZod } from "@/lib/zod-errors";
 import type { TenantUser } from "@/components/users/users-table";
-import { UserRole } from "@/types/auth";
+import { AnalystLevel, UserRole } from "@/types/auth";
+import { roleLabel } from "@/lib/roles";
+import {
+  RoleLevelFields,
+  type TenantRole,
+} from "@/components/users/role-level-fields";
 
 type ActiveDialog = "edit" | "role" | "reset" | "delete" | null;
 
-const ROLE_OPTIONS = [
-  UserRole.ADMIN,
-  UserRole.ANALYST,
-  UserRole.VIEWER,
-] as const;
-
-// Every action here has a real backend endpoint that already rejects self-targeting 
+// Every action here has a real backend endpoint that already rejects self-targeting
 //  self-delete, self-role-change, and Admin-reset-on-self are all
 // explicit ForbiddenExceptions, to stop a stolen bearer token from becoming permanent
 // account takeover). Hiding these actions on the caller's own row is UX on top of that
@@ -264,7 +263,10 @@ function ChangeRoleDialog({
   onOpenChange,
   onSuccess,
 }: DialogProps) {
-  const [role, setRole] = useState<string>(user.role);
+  const [role, setRole] = useState<TenantRole>(user.role);
+  const [analystLevel, setAnalystLevel] = useState<AnalystLevel>(
+    user.analystLevel ?? AnalystLevel.L1,
+  );
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -279,6 +281,7 @@ function ChangeRoleDialog({
     setPrevOpen(open);
     if (open) {
       setRole(user.role);
+      setAnalystLevel(user.analystLevel ?? AnalystLevel.L1);
       setFormError(null);
     }
   }
@@ -287,7 +290,10 @@ function ChangeRoleDialog({
     event.preventDefault();
     setFormError(null);
 
-    const parsed = changeRoleSchema.safeParse({ role });
+    const parsed = changeRoleSchema.safeParse({
+      role,
+      analystLevel: role === UserRole.ANALYST ? analystLevel : undefined,
+    });
     if (!parsed.success) {
       setFormError(parsed.error.issues[0]?.message ?? "Invalid role");
       return;
@@ -305,7 +311,9 @@ function ChangeRoleDialog({
         setFormError(data.message ?? "Could not change role");
         return;
       }
-      toast.success(`${data.name} is now ${data.role}`);
+      toast.success(
+        `${data.name} is now ${roleLabel(data.role, data.analystLevel)}`,
+      );
       onSuccess();
     } catch {
       setFormError("Could not reach the server. Try again.");
@@ -321,30 +329,23 @@ function ChangeRoleDialog({
           <DialogTitle>Change {user.name}&apos;s role</DialogTitle>
           <DialogDescription>
             Currently{" "}
-            <span className="font-medium text-foreground">{user.role}</span>.
+            <span className="font-medium text-foreground">
+              {roleLabel(user.role, user.analystLevel)}
+            </span>
+            .
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} noValidate>
           <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor={`role-${user.id}`}>New role</FieldLabel>
-              <Select
-                value={role}
-                onValueChange={(value) => value && setRole(value)}
-                disabled={pending}
-              >
-                <SelectTrigger id={`role-${user.id}`} className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLE_OPTIONS.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {r}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+            <RoleLevelFields
+              idPrefix={`user-${user.id}`}
+              role={role}
+              analystLevel={analystLevel}
+              onRoleChange={setRole}
+              onLevelChange={setAnalystLevel}
+              disabled={pending}
+              roleLabelText="New role"
+            />
             {formError && (
               <p role="alert" className="text-sm text-destructive">
                 {formError}

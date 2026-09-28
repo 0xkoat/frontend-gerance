@@ -11,6 +11,7 @@ export function decodeJwtPayload(token: string): SessionClaims | null {
     const payload = JSON.parse(json) as {
       sub: string;
       role: SessionClaims["role"];
+      analystLevel?: SessionClaims["analystLevel"];
       tenantId: string | null;
       mustChangePassword: boolean;
       exp?: number;
@@ -23,6 +24,8 @@ export function decodeJwtPayload(token: string): SessionClaims | null {
     return {
       userId: payload.sub,
       role: payload.role,
+      // Tokens minted before analyst levels existed carry no claim at all.
+      analystLevel: payload.analystLevel ?? null,
       tenantId: payload.tenantId,
       mustChangePassword: payload.mustChangePassword,
     };

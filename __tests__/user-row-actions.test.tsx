@@ -25,6 +25,7 @@ const user: TenantUser = {
   email: "sara@meridian.test",
   phoneNumber: "+21620000020",
   role: "ANALYST",
+  analystLevel: "L1",
   mustChangePassword: false,
   passwordResetRequestedAt: null,
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -152,7 +153,10 @@ describe("UserRowActions", () => {
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toBe("/api/users/u2/role");
       expect(init.method).toBe("PATCH");
-      expect(JSON.parse(init.body)).toEqual({ role: "ANALYST" });
+      expect(JSON.parse(init.body)).toEqual({
+        role: "ANALYST",
+        analystLevel: "L1",
+      });
     });
 
     it("shows the backend's error message on failure", async () => {

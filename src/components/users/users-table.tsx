@@ -8,6 +8,9 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { UserRowActions } from "@/components/users/user-row-actions";
+import type { TenantRole } from "@/components/users/role-level-fields";
+import { roleLabel } from "@/lib/roles";
+import type { AnalystLevel } from "@/types/auth";
 
 // Mirrors the SafeUser shape (User minus hashedPassword)
 // API contract.
@@ -16,7 +19,8 @@ export interface TenantUser {
   name: string;
   email: string;
   phoneNumber: string;
-  role: string;
+  role: TenantRole;
+  analystLevel: AnalystLevel | null;
   mustChangePassword: boolean;
   passwordResetRequestedAt: string | null;
   createdAt: string;
@@ -66,7 +70,9 @@ export function UsersTable({
                 {user.phoneNumber}
               </TableCell>
               <TableCell>
-                <Badge variant="secondary">{user.role}</Badge>
+                <Badge variant="secondary">
+                  {roleLabel(user.role, user.analystLevel)}
+                </Badge>
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">
                 <div className="flex flex-col gap-1">

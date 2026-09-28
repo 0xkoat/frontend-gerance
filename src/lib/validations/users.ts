@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { newPasswordSchema } from "@/lib/validations/auth";
-import { UserRole } from "@/types/auth";
+import { AnalystLevel, UserRole } from "@/types/auth";
 
 // Mirrors backend/src/users/dto/createUser.dto.ts — the fields every account (subordinate
 // user or a tenant's first Admin) needs, shared by createUserSchema and
@@ -18,13 +18,41 @@ export const personFieldsSchema = z.object({
     .regex(/^[\d\s\-()+]+$/, "Digits only (plus optional spaces, -, (), +)"),
 });
 
+const tenantRoleFields = {
+  role: z.enum([UserRole.ADMIN, UserRole.ANALYST]),
+  analystLevel: z
+    .enum([AnalystLevel.L1, AnalystLevel.L2, AnalystLevel.L3])
+    .optional(),
+};
+
+// Same rule as the backend's UsersService.resolveAnalystLevel (and its DB CHECK
+// constraint): every Analyst has a level, no other role has one.
+function refineAnalystLevel(
+  value: { role: UserRole; analystLevel?: AnalystLevel },
+  ctx: z.RefinementCtx,
+) {
+  if (value.role === UserRole.ANALYST && !value.analystLevel) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["analystLevel"],
+      message: "Choose an analyst level",
+    });
+  }
+  if (value.role !== UserRole.ANALYST && value.analystLevel) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["analystLevel"],
+      message: "Only Analysts have a level",
+    });
+  }
+}
+
 // Mirrors backend/src/users/dto/createSubordinateUser.dto.ts. Role is restricted to what
-// an Admin is allowed to create (its @IsIn) — Admin can also create a co-Admin (see
-// backend/CLAUDE.md's self-loop rule), never SUPER_ADMIN, which is seed-only and never
-// created through the API.
-export const createUserSchema = personFieldsSchema.extend({
-  role: z.enum([UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER]),
-});
+// an Admin is allowed to create (its @IsIn): a co-Admin (see backend/CLAUDE.md's
+// self-loop rule) or an Analyst with a level.
+export const createUserSchema = personFieldsSchema
+  .extend(tenantRoleFields)
+  .superRefine(refineAnalystLevel);
 
 // Mirrors backend/src/users/dto/updateUser.dto.ts — PartialType(OmitType(CreateUserDto,
 // ['password'])), so every field is optional and password/role are structurally excluded
@@ -36,9 +64,9 @@ export const updateUserSchema = personFieldsSchema
   .partial();
 
 // Mirrors backend/src/users/dto/changeUserRole.dto.ts.
-export const changeRoleSchema = z.object({
-  role: z.enum([UserRole.ADMIN, UserRole.ANALYST, UserRole.VIEWER]),
-});
+export const changeRoleSchema = z
+  .object(tenantRoleFields)
+  .superRefine(refineAnalystLevel);
 
 // Mirrors backend/src/users/dto/resetPassword.dto.ts. This is an Admin choosing a new
 // password for someone else (not a system-generated one — see backend/CLAUDE.md's note on

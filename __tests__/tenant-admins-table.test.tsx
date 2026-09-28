@@ -16,6 +16,7 @@ const soleAdmin: TenantUser = {
   email: "alice@meridian.test",
   phoneNumber: "+21620000001",
   role: "ADMIN",
+  analystLevel: null,
   mustChangePassword: false,
   passwordResetRequestedAt: "2026-07-20T09:00:00.000Z",
   createdAt: "2026-01-01T00:00:00.000Z",

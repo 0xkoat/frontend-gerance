@@ -12,28 +12,22 @@ import {
   FieldError,
 } from "@/components/ui/field";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  RoleLevelFields,
+  type TenantRole,
+} from "@/components/users/role-level-fields";
 import { createUserSchema } from "@/lib/validations/users";
 import { fieldErrorsFromZod } from "@/lib/zod-errors";
-import { UserRole } from "@/types/auth";
-
-const ROLE_OPTIONS = [
-  UserRole.ANALYST,
-  UserRole.VIEWER,
-  UserRole.ADMIN,
-] as const;
+import { AnalystLevel, UserRole } from "@/types/auth";
 
 export function CreateUserForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [role, setRole] = useState<string>(UserRole.ANALYST);
+  const [role, setRole] = useState<TenantRole>(UserRole.ANALYST);
+  const [analystLevel, setAnalystLevel] = useState<AnalystLevel>(
+    AnalystLevel.L1,
+  );
 
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -47,6 +41,7 @@ export function CreateUserForm() {
       password: String(formData.get("password") ?? ""),
       phoneNumber: String(formData.get("phoneNumber") ?? ""),
       role,
+      analystLevel: role === UserRole.ANALYST ? analystLevel : undefined,
     };
 
     const parsed = createUserSchema.safeParse(values);
@@ -75,6 +70,7 @@ export function CreateUserForm() {
       });
       (event.target as HTMLFormElement).reset();
       setRole(UserRole.ANALYST);
+      setAnalystLevel(AnalystLevel.L1);
       router.refresh();
     } catch {
       setFormError("Could not reach the server. Try again.");
@@ -120,25 +116,15 @@ export function CreateUserForm() {
           <FieldError>{fieldErrors.password}</FieldError>
         </Field>
 
-        <Field>
-          <FieldLabel htmlFor="role">Role</FieldLabel>
-          <Select
-            value={role}
-            onValueChange={(value) => value && setRole(value)}
-            disabled={pending}
-          >
-            <SelectTrigger id="role" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {ROLE_OPTIONS.map((r) => (
-                <SelectItem key={r} value={r}>
-                  {r}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
+        <RoleLevelFields
+          idPrefix="new-user"
+          role={role}
+          analystLevel={analystLevel}
+          onRoleChange={setRole}
+          onLevelChange={setAnalystLevel}
+          levelError={fieldErrors.analystLevel}
+          disabled={pending}
+        />
 
         {formError && (
           <p role="alert" className="text-sm text-destructive">

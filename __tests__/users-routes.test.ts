@@ -29,9 +29,10 @@ const superAdminToken = fakeToken({
   tenantId: null,
   mustChangePassword: false,
 });
-const viewerToken = fakeToken({
-  sub: "viewer-1",
-  role: "VIEWER",
+const analystToken = fakeToken({
+  sub: "analyst-1",
+  role: "ANALYST",
+  analystLevel: "L1",
   tenantId: "t1",
   mustChangePassword: false,
 });
@@ -63,7 +64,7 @@ describe("POST /api/users", () => {
   });
 
   it("403s for a non-Admin session", async () => {
-    setSession(viewerToken);
+    setSession(analystToken);
     const { POST } = await import("@/app/api/users/route");
 
     const res = await POST(req({}));
@@ -101,6 +102,7 @@ describe("POST /api/users", () => {
         password: "Str0ng!Pass",
         phoneNumber: "+21620000020",
         role: "ANALYST",
+        analystLevel: "L2",
       }),
     );
 
@@ -128,6 +130,7 @@ describe("POST /api/users", () => {
         password: "Str0ng!Pass",
         phoneNumber: "+21620000020",
         role: "ANALYST",
+        analystLevel: "L2",
       }),
     );
 
@@ -143,7 +146,7 @@ function getReq(query = "") {
 
 describe("GET /api/users", () => {
   it("403s for a non-Admin session", async () => {
-    setSession(viewerToken);
+    setSession(analystToken);
     const { GET } = await import("@/app/api/users/route");
 
     const res = await GET(getReq());
@@ -195,7 +198,7 @@ describe("GET /api/users", () => {
 
 describe("PATCH /api/users/:id", () => {
   it("403s for a non-Admin session", async () => {
-    setSession(viewerToken);
+    setSession(analystToken);
     const { PATCH } = await import("@/app/api/users/[id]/route");
 
     const res = await PATCH(req({ name: "New Name" }), paramsOf("u2"));
@@ -311,7 +314,10 @@ describe("PATCH /api/users/:id/role", () => {
     );
     const { PATCH } = await import("@/app/api/users/[id]/role/route");
 
-    const res = await PATCH(req({ role: "VIEWER" }), paramsOf("u2"));
+    const res = await PATCH(
+      req({ role: "ANALYST", analystLevel: "L1" }),
+      paramsOf("u2"),
+    );
 
     expect(res.status).toBe(409);
     const body = await res.json();
@@ -330,7 +336,7 @@ describe("POST /api/users/:id/reset-password", () => {
   });
 
   it("403s for a non-Admin, non-Super-Admin session", async () => {
-    setSession(viewerToken);
+    setSession(analystToken);
     const { POST } = await import("@/app/api/users/[id]/reset-password/route");
 
     const res = await POST(req({ newPassword: "Str0ng!Pass" }), paramsOf("u2"));

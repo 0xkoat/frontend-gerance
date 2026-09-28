@@ -36,7 +36,7 @@ describe("CreateUserForm", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("posts to /api/users with the default ANALYST role and shows a success toast", async () => {
+  it("posts to /api/users with the default ANALYST L1 role and shows a success toast", async () => {
     const fetchMock = jest
       .fn()
       .mockResolvedValue(mockJsonResponse({ name: "Ahmed Trabelsi" }, 201));
@@ -63,7 +63,14 @@ describe("CreateUserForm", () => {
       name: "Ahmed Trabelsi",
       email: "ahmed@meridian.test",
       role: "ANALYST",
+      analystLevel: "L1",
     });
+  });
+
+  it("shows the analyst level picker only while the role is Analyst", () => {
+    render(<CreateUserForm />);
+
+    expect(screen.getByLabelText(/analyst level/i)).toBeInTheDocument();
   });
 
   it("shows the backend's error message on failure without refreshing", async () => {
