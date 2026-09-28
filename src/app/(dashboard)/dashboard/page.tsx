@@ -11,6 +11,9 @@ export default async function DashboardPage() {
   if (session.role === UserRole.SUPER_ADMIN) {
     return <SuperAdminOverview />;
   }
+  if (session.role === UserRole.INTEGRATION_ADMIN) {
+    return <IntegrationAdminOverview />;
+  }
 
   return <TenantOverview />;
 }
@@ -78,6 +81,19 @@ function TenantOverview() {
       <h1 className="text-xl font-semibold tracking-tight">Overview</h1>
       <p className="text-sm text-muted-foreground">
         Security modules and support tickets will be available here.
+      </p>
+    </div>
+  );
+}
+
+// Placeholder until module endpoint management (Phase 3) and the module ticket inbox
+// (Phase 4) exist — the only two things this role does.
+function IntegrationAdminOverview() {
+  return (
+    <div className="flex flex-col gap-2">
+      <h1 className="text-xl font-semibold tracking-tight">Overview</h1>
+      <p className="text-sm text-muted-foreground">
+        Module endpoint settings and module tickets will be available here.
       </p>
     </div>
   );

@@ -30,10 +30,9 @@ export async function requireRole(...roles: UserRole[]) {
   return { error: null, session };
 }
 
-// For routes open to any authenticated tenant role (most module GET routes — see
-// backend/CLAUDE.md's module plan, decision 9: Viewer is read-only, not blocked, so GET
-// routes carry no @Roles() at all). requireRole() itself can't express "any role" since an
-// empty roles list would reject everyone via its own `!roles.includes(...)` check.
+// For routes open to any authenticated role (backend routes with no @Roles() at all).
+// requireRole() itself can't express "any role" since an empty roles list would reject
+// everyone via its own `!roles.includes(...)` check.
 export async function requireAuthenticated() {
   const session = await getSession();
   if (!session) {
