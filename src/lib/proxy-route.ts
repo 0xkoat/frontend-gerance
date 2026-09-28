@@ -59,29 +59,25 @@ export async function backendErrorResponse(
 
 interface ProxyToBackendOptions<Body> {
   method: "GET" | "POST" | "PATCH" | "DELETE";
-  // The backend path this route proxies to, e.g. "/vm/assets". For a route with a dynamic
+  // The backend path this route proxies to, e.g. "/tenants". For a route with a dynamic
   // segment (this Route Handler's own [id] folder), pass a function instead —
-  // `(params) => \`/vm/vulnerabilities/${params.id}/status\`` — params come from Next's own
+  // `(params) => \`/tenants/${params.id}/modules\`` — params come from Next's own
   // context.params for that segment.
   path: string | ((params: RouteParams) => string);
   // Validated against the request body before forwarding. Omit for GET/DELETE routes, which
   // never send one.
   schema?: z.ZodType<Body>;
-  // Defaults to requireAuthenticated (any authenticated tenant role) — matches the backend's
-  // own default of "no @Roles() at all" on most GET routes (see backend/CLAUDE.md's module
-  // plan, decision 9: Viewer is read-only, not blocked). Pass requireAnalystOrAdmin or
-  // requireAdmin from src/lib/api-guards.ts for mutation routes.
+  // Defaults to requireAuthenticated (any authenticated role) — matches the backend's own
+  // default of "no @Roles() at all". Pass a narrower guard from src/lib/api-guards.ts
+  // (requireAdmin, requireSuperAdmin, ...) for role-restricted routes.
   guard?: Guard;
   fallbackErrorMessage?: string;
 }
 
-// Shared factory behind every Route Handler under src/app/api/{vm,edr,siem,cti,soar,dfir,
-// assets}/**, per decision 6 in CLAUDE.md's adaptation plan: one small helper parameterized
-// by path/method/schema/guard, instead of ~40 hand-written near-duplicates each repeating
-// the same zod-validate → guard → backendFetchAuthed → normalize-error shape (the pattern
-// src/app/api/users/route.ts and friends already established by hand). Proven first against
-// VM's asset list/create routes (the simplest shape, no dynamic segment) — see
-// src/app/api/vm/assets/route.ts — before generating the other ~35.
+// Shared factory behind the Route Handlers under src/app/api/**, per decision 6 in
+// CLAUDE.md's adaptation plan: one small helper parameterized by path/method/schema/guard,
+// instead of hand-written near-duplicates each repeating the same zod-validate → guard →
+// backendFetchAuthed → normalize-error shape.
 //
 // Always uses the refresh-capable backendFetchAuthed, never backendFetchAuthedNoRefresh —
 // every caller of this helper is a Route Handler by construction (it's exported as a

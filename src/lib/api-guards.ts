@@ -50,11 +50,6 @@ export async function requireAuthenticated() {
 
 export const requireAdmin = () => requireRole(UserRole.ADMIN);
 export const requireSuperAdmin = () => requireRole(UserRole.SUPER_ADMIN);
-// Most security-module mutation routes (assign, status change, create/edit/delete a
-// record) are Admin-or-Analyst-gated on the backend — Viewer is read-only by design (see
-// backend/CLAUDE.md's module plan, decision 9), never a third role here.
-export const requireAnalystOrAdmin = () =>
-  requireRole(UserRole.ADMIN, UserRole.ANALYST);
 // The backend's POST /users/:id/reset-password now accepts both roles too (see
 // backend/src/users/users.controller.ts) — a Super Admin resetting an Admin's password is
 // only valid when that Admin has no co-Admin in their tenant to do it instead

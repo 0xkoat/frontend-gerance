@@ -91,8 +91,8 @@
   --card-foreground: #e7e9f0;
   --popover: #171c27;
   --popover-foreground: #e7e9f0;
-  /* Signal — brand/interactive accent, deliberately outside the reserved severity
-     palette (src/lib/severity.ts) so it never reads as a status color */
+  /* Signal — brand/interactive accent, deliberately outside the red/amber/green status
+     range so it never reads as a status color */
   --primary: #6c63ff;
   --primary-foreground: #f5f4ff;
   --secondary: #1b202c;
@@ -101,8 +101,6 @@
   --muted-foreground: #8a90a3;
   --accent: #1f2533;
   --accent-foreground: #e7e9f0;
-  /* Matches SEVERITY_COLOR.critical exactly — a destructive action and a "Critical"
-     badge should always read as the same signal. */
   --destructive: #d03b3b;
   --border: rgba(255, 255, 255, 0.08);
   --input: rgba(255, 255, 255, 0.12);

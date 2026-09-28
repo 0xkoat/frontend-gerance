@@ -1,54 +1,37 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// Users is Admin-only nav and Tenants is Super-Admin-only nav; a non-Admin
+// tenant session gets neither link, and direct navigation is also blocked
+// (redirected away, not shown a bare 403 page).
+async function expectNoAdminNav(page: Page) {
+  await page.goto("/dashboard");
+
+  const nav = page.locator("nav, aside");
+  await expect(nav.getByRole("link", { name: "Users" })).toHaveCount(0);
+  await expect(nav.getByRole("link", { name: "Tenants" })).toHaveCount(0);
+
+  await page.goto("/users");
+  await expect(page).not.toHaveURL(/\/users$/);
+}
 
 test.describe("RBAC", () => {
   test.describe("Viewer", () => {
     test.use({ storageState: "e2e/.auth/demo-viewer.json" });
 
-    test("sees no mutation controls on a module page and no Users/Tenants nav", async ({
+    test("gets no Users/Tenants nav and cannot reach /users", async ({
       page,
     }) => {
-      await page.goto("/vm");
-
-      // No row-level assign control anywhere — Viewer is read-only, not a
-      // restricted mutator.
-      await expect(page.getByText("Assign to...")).toHaveCount(0);
-      await expect(
-        page.getByRole("button", { name: /^Assign to me$/ }),
-      ).toHaveCount(0);
-
-      // Users is Admin-only nav; a Viewer session doesn't even get the link.
-      await expect(
-        page.locator("nav, aside").getByRole("link", { name: "Users" }),
-      ).toHaveCount(0);
-
-      // Direct navigation is also blocked, not just hidden from the
-      // sidebar (redirected away, not shown a bare 403 page).
-      await page.goto("/users");
-      await expect(page).not.toHaveURL(/\/users$/);
+      await expectNoAdminNav(page);
     });
   });
 
   test.describe("Analyst", () => {
     test.use({ storageState: "e2e/.auth/demo-analyst.json" });
 
-    test("can only self-assign, never pick another user", async ({
+    test("gets no Users/Tenants nav and cannot reach /users", async ({
       page,
     }) => {
-      await page.goto("/vm");
-
-      const openRow = page
-        .locator("tbody tr")
-        .filter({ hasText: "Open" })
-        .first();
-
-      // An Analyst gets a plain "Assign to me" button, not the Admin's
-      // full assignee-picker dropdown — this is the actual RBAC boundary
-      // (`resolveAssignee`: Analyst can only self-assign), reflected in
-      // the control's shape, not just a disabled dropdown.
-      await expect(
-        openRow.getByRole("button", { name: "Assign to me" }),
-      ).toBeVisible();
-      await expect(openRow.getByText("Assign to...")).toHaveCount(0);
+      await expectNoAdminNav(page);
     });
   });
 });
