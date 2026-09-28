@@ -37,6 +37,7 @@ export default async function DashboardLayout({
   // backend/CLAUDE.md's "single designated recipient" notification model) — nothing to
   // check for Analyst/Integration Admin, who never see the Users/Tenants nav item anyway.
   let hasPendingPasswordRequest = false;
+  let hasPendingIntegrationAdminRequest = false;
   if (
     session.role === UserRole.ADMIN ||
     session.role === UserRole.SUPER_ADMIN
@@ -45,8 +46,15 @@ export default async function DashboardLayout({
       "/users/me/pending-password-requests",
     );
     if (res.ok) {
-      const data = (await res.json()) as { hasPending: boolean };
-      hasPendingPasswordRequest = data.hasPending;
+      const data = (await res.json()) as {
+        hasPending: boolean;
+        tenantAdmins?: boolean;
+        integrationAdmins?: boolean;
+      };
+      // A Super Admin gets the two sources separately (Tenants page vs Integration
+      // Admins page); an Admin only gets the combined flag.
+      hasPendingPasswordRequest = data.tenantAdmins ?? data.hasPending;
+      hasPendingIntegrationAdminRequest = data.integrationAdmins ?? false;
     }
   }
 
@@ -57,6 +65,7 @@ export default async function DashboardLayout({
         displayName={displayName}
         subtitle={subtitle}
         hasPendingPasswordRequest={hasPendingPasswordRequest}
+        hasPendingIntegrationAdminRequest={hasPendingIntegrationAdminRequest}
       />
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-7xl px-6 py-6">{children}</div>

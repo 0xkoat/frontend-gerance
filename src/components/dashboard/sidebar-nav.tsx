@@ -22,6 +22,7 @@ interface SidebarNavProps {
   displayName: string;
   subtitle: string;
   hasPendingPasswordRequest?: boolean;
+  hasPendingIntegrationAdminRequest?: boolean;
 }
 
 export function SidebarNav({
@@ -29,6 +30,7 @@ export function SidebarNav({
   displayName,
   subtitle,
   hasPendingPasswordRequest = false,
+  hasPendingIntegrationAdminRequest = false,
 }: SidebarNavProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -68,6 +70,8 @@ export function SidebarNav({
               GET /users/me/pending-password-requests — a single designated
               recipient per tenant (the first-created Admin), or every Super
               Admin when that first Admin's own request is the one pending.
+              An Integration Admin's request gets its own dot on the
+              Integration Admins link (hasPendingIntegrationAdminRequest).
               See backend/CLAUDE.md's provisioning rules for the exact
               targeting logic; this component just renders whatever the
               caller (the dashboard layout, which polls that endpoint)
@@ -96,6 +100,7 @@ export function SidebarNav({
             <NavLink
               href="/integration-admins"
               active={pathname === "/integration-admins"}
+              showDot={hasPendingIntegrationAdminRequest}
             >
               <Cable className="size-4" />
               Integration Admins
