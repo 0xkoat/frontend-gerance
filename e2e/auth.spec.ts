@@ -28,7 +28,7 @@ test.describe("Auth", () => {
     await page.getByRole("button", { name: "Sign in to SecOps" }).click();
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 15_000 });
     await expect(
-      page.getByRole("heading", { name: "Overview", exact: true }),
+      page.getByRole("heading", { name: "Security modules" }),
     ).toBeVisible();
   });
 
