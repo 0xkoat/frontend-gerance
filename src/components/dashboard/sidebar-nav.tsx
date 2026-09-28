@@ -9,13 +9,11 @@ import {
   Building2,
   LogOut,
   Settings,
-  Rss,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/brand-mark";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { MODULES } from "@/lib/nav";
 import { UserRole } from "@/types/auth";
 
 interface SidebarNavProps {
@@ -42,11 +40,6 @@ export function SidebarNav({
     router.refresh();
   }
 
-  // Super Admin isn't scoped to any tenant, so the six security-module
-  // links and the Asset Feed — all tenant data — don't apply to that role
-  // at all, not just "empty for them".
-  const isTenantScoped = role !== UserRole.SUPER_ADMIN;
-
   return (
     <aside className="flex h-full w-60 shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground">
       <div className="flex items-center gap-2 px-4 py-4">
@@ -70,12 +63,6 @@ export function SidebarNav({
             <LayoutDashboard className="size-4" />
             Dashboard
           </NavLink>
-          {isTenantScoped && (
-            <NavLink href="/assets" active={pathname === "/assets"}>
-              <Rss className="size-4" />
-              Asset Feed
-            </NavLink>
-          )}
           {/* hasPendingPasswordRequest drives the red dot for
               GET /users/me/pending-password-requests — a single designated
               recipient per tenant (the first-created Admin), or every Super
@@ -105,23 +92,6 @@ export function SidebarNav({
             </NavLink>
           )}
         </div>
-
-        {isTenantScoped && (
-          <div className="flex flex-col gap-1">
-            <p className="px-2 text-xs font-medium tracking-wider text-muted-foreground">
-              MODULES
-            </p>
-            {MODULES.map((m) => (
-              <NavLink
-                key={m.slug}
-                href={`/${m.slug}`}
-                active={pathname === `/${m.slug}`}
-              >
-                {m.label}
-              </NavLink>
-            ))}
-          </div>
-        )}
       </nav>
 
       <Separator />
