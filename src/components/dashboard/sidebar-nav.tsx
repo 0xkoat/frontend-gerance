@@ -8,6 +8,7 @@ import {
   Users,
   Building2,
   Cable,
+  SlidersHorizontal,
   ExternalLink,
   Network,
   LogOut,
@@ -92,6 +93,15 @@ export function SidebarNav({
             >
               <Users className="size-4" />
               Users
+            </NavLink>
+          )}
+          {role === UserRole.ADMIN && (
+            <NavLink
+              href="/module-access"
+              active={pathname === "/module-access"}
+            >
+              <SlidersHorizontal className="size-4" />
+              Module access
             </NavLink>
           )}
           {role === UserRole.SUPER_ADMIN && (
