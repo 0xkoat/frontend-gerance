@@ -4,6 +4,8 @@ import { requireSession } from "@/lib/session";
 import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import { UserRole } from "@/types/auth";
 import type { TenantSummary } from "@/components/tenants/tenants-table";
+import { ModuleTiles } from "@/components/modules/module-tiles";
+import type { AvailableModule } from "@/types/modules";
 
 export default async function DashboardPage() {
   const session = await requireSession();
@@ -15,7 +17,7 @@ export default async function DashboardPage() {
     return <IntegrationAdminOverview />;
   }
 
-  return <TenantOverview />;
+  return <TenantOverview role={session.role} />;
 }
 
 // Super Admin isn't bound to a tenant (tenantId is always null — see root CLAUDE.md's API
@@ -75,13 +77,24 @@ async function SuperAdminOverview() {
 
 // Placeholder while the module data layer is gone (v2 redesign): the module launcher
 // (Phase 3) and ticket summary (Phase 4) replace this.
-function TenantOverview() {
+// The modules this user may open (GET /modules already hides the ones above an Analyst's
+// level). Support tickets join this page in Phase 4.
+async function TenantOverview({ role }: { role: UserRole }) {
+  const res = await backendFetchAuthedNoRefresh("/modules");
+  const modules: AvailableModule[] = res.ok ? await res.json() : [];
+
   return (
-    <div className="flex flex-col gap-2">
-      <h1 className="text-xl font-semibold tracking-tight">Overview</h1>
-      <p className="text-sm text-muted-foreground">
-        Security modules and support tickets will be available here.
-      </p>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">
+          Security modules
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Each module opens its own platform on the internal network. You need
+          to be on that network (or VPN) for it to load.
+        </p>
+      </div>
+      <ModuleTiles modules={modules} showLevels={role === UserRole.ADMIN} />
     </div>
   );
 }

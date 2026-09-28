@@ -8,6 +8,7 @@ import {
   Users,
   Building2,
   Cable,
+  ExternalLink,
   Network,
   LogOut,
   Settings,
@@ -17,6 +18,8 @@ import { BrandMark } from "@/components/brand-mark";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { UserRole } from "@/types/auth";
+import type { AvailableModule } from "@/types/modules";
+import { useLaunchModule } from "@/components/modules/use-launch-module";
 
 interface SidebarNavProps {
   role: UserRole;
@@ -24,6 +27,7 @@ interface SidebarNavProps {
   subtitle: string;
   hasPendingPasswordRequest?: boolean;
   hasPendingIntegrationAdminRequest?: boolean;
+  modules?: AvailableModule[];
 }
 
 export function SidebarNav({
@@ -32,10 +36,13 @@ export function SidebarNav({
   subtitle,
   hasPendingPasswordRequest = false,
   hasPendingIntegrationAdminRequest = false,
+  modules = [],
 }: SidebarNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [loggingOut, setLoggingOut] = useState(false);
+  const { launch, launching } = useLaunchModule();
+  const launchable = modules.filter((m) => m.canLaunch);
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -118,6 +125,26 @@ export function SidebarNav({
             </NavLink>
           )}
         </div>
+
+        {launchable.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <p className="px-2 text-xs font-medium tracking-wider text-muted-foreground">
+              MODULES
+            </p>
+            {launchable.map((m) => (
+              <button
+                key={m.moduleName}
+                type="button"
+                onClick={() => launch(m.moduleName)}
+                disabled={launching !== null}
+                className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-sidebar-foreground/80 transition-colors hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground disabled:opacity-60"
+              >
+                <ExternalLink className="size-4" />
+                {launching === m.moduleName ? "Opening..." : m.moduleName}
+              </button>
+            ))}
+          </div>
+        )}
       </nav>
 
       <Separator />

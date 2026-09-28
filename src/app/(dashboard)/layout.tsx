@@ -3,6 +3,7 @@ import { backendFetchAuthedNoRefresh } from "@/lib/backend";
 import { SidebarNav } from "@/components/dashboard/sidebar-nav";
 import { UserRole } from "@/types/auth";
 import { roleLabel } from "@/lib/roles";
+import type { AvailableModule } from "@/types/modules";
 
 export default async function DashboardLayout({
   children,
@@ -58,6 +59,15 @@ export default async function DashboardLayout({
     }
   }
 
+  // Tenant members get their launchable modules in the sidebar too.
+  let modules: AvailableModule[] = [];
+  if (session.role === UserRole.ADMIN || session.role === UserRole.ANALYST) {
+    const res = await backendFetchAuthedNoRefresh("/modules");
+    if (res.ok) {
+      modules = (await res.json()) as AvailableModule[];
+    }
+  }
+
   return (
     <div className="flex min-h-screen">
       <SidebarNav
@@ -66,6 +76,7 @@ export default async function DashboardLayout({
         subtitle={subtitle}
         hasPendingPasswordRequest={hasPendingPasswordRequest}
         hasPendingIntegrationAdminRequest={hasPendingIntegrationAdminRequest}
+        modules={modules}
       />
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-7xl px-6 py-6">{children}</div>
