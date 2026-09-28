@@ -37,7 +37,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { updateTenantModuleSchema } from "@/lib/validations/tenants";
 import { fieldErrorsFromZod } from "@/lib/zod-errors";
-import type { TenantModule } from "@/types/security";
+import type { TenantModule } from "@/types/modules";
 
 type ActiveDialog = "edit" | "remove" | null;
 

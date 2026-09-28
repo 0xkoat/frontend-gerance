@@ -9,7 +9,7 @@ import type { TenantUser } from "@/components/users/users-table";
 import { TenantAdminsTable } from "@/components/tenants/tenant-admins-table";
 import { TenantModulesTable } from "@/components/tenants/tenant-modules-table";
 import { ActivateModuleForm } from "@/components/tenants/activate-module-form";
-import type { TenantModule } from "@/types/security";
+import type { TenantModule } from "@/types/modules";
 
 interface TenantDetail {
   id: string;

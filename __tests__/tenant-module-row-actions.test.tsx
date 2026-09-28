@@ -2,7 +2,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TenantModuleRowActions } from "@/components/tenants/tenant-module-row-actions";
 import { mockJsonResponse } from "../test-utils";
-import type { TenantModule } from "@/types/security";
+import type { TenantModule } from "@/types/modules";
 
 const refresh = jest.fn();
 const toastSuccess = jest.fn();

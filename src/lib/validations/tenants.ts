@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { personFieldsSchema } from "@/lib/validations/users";
-import { ModuleName } from "@/types/security";
+import { ModuleName } from "@/types/modules";
 
 // Mirrors backend/src/tenants/dto/createTenant.dto.ts (CreateUserDto + tenantName). This is
 // the only place a Tenant + its first Admin can ever be created — Super Admin-only, see

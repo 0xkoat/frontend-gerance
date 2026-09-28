@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { TenantModuleRowActions } from "@/components/tenants/tenant-module-row-actions";
-import type { TenantModule } from "@/types/security";
+import type { TenantModule } from "@/types/modules";
 
 // Phase 11 (2026-08-07) — the "which modules is this tenant subscribed to" activation
 // surface described in root CLAUDE.md, previously entirely unbuilt (see CLAUDE.md's

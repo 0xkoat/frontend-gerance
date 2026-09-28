@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import { activateTenantModuleSchema } from "@/lib/validations/tenants";
 import { fieldErrorsFromZod } from "@/lib/zod-errors";
-import { ModuleName } from "@/types/security";
+import { ModuleName } from "@/types/modules";
 
 // `config` is a raw JSON textarea, not a structured form — ActivateTenantModuleDto accepts
 // an open, unconstrained object (each module's own config shape isn't defined anywhere in
