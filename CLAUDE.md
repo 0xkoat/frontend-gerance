@@ -9,6 +9,31 @@ counterpart, kept in sync by hand as the project develops. For the full narrativ
 development log (chronological, with rationale — mirrors `backend/docs/
 internship-report-backend.md`), see `docs/internship-report-frontend.md`.
 
+# v2 redesign (supervisor-requested, started 2026-09-28, branch `v2`)
+
+Security modules are now external platforms the user is launched into (private IP:PORT,
+one shared instance each), not in-app data pages. See `../backend/CLAUDE.md`'s "v2
+redesign" section for the full phase plan (roles, module launch, ticketing).
+
+**Phase 1 done 2026-09-28** (commits `f44adf5`, `d8234c5`, `f3a3bc0`, `88a53f5`, `2a392c8`):
+- Deleted the module and asset-feed pages (`(dashboard)/{siem,soar,cti,edr,dfir,vm,assets}`),
+  their `api/**` proxies, `components/{siem,soar,cti,edr,dfir,vm,assets,security}`, their
+  `types/*` and `lib/validations/*`, `lib/{asset-feed,assignable-users,severity,live-events,
+  query-filters,pluralize,reload-page,nav}.ts`, `requireAnalystOrAdmin`, and the related
+  Jest and Playwright specs (`e2e/security-modules.spec.ts`; `rbac.spec.ts` now only checks
+  nav/redirects).
+- `ModuleName`/`TenantModule` moved to `src/types/modules.ts` (tenant module UI still uses
+  them). `api/events/stream` proxy kept for Phase 4 notifications.
+- Dashboard's tenant view is a placeholder until the Phase 3 launcher and Phase 4 ticket
+  summary; sidebar module links are hidden until Phase 3.
+- Verified: `tsc` (source) clean, 21 suites / 138 Jest tests, `next build`, 12/12
+  Playwright against the live dev stack (after warm-up; a cold dev server makes several
+  specs time out on first compile). `e2e/fixtures/accounts.ts` still matches the current
+  dev DB but will need regenerating after the next fresh `seed:demo` (see backend note).
+
+Everything below describing module pages, the asset feed, live events, severity styling or
+the "Backend to frontend adaptation plan" is **historical** — built, then removed in v2.
+
 # Stack (as actually installed, 2026-08-19 — re-verify against package.json before trusting)
 
 - Next.js 16.2.12, App Router, `src/` directory, Turbopack — bumped from 16.2.10 on 2026-08-19
