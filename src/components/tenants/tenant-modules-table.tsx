@@ -35,7 +35,7 @@ export function TenantModulesTable({
         <TableRow>
           <TableHead>Module</TableHead>
           <TableHead>Status</TableHead>
-          <TableHead>Config</TableHead>
+          <TableHead>Minimum analyst level</TableHead>
           <TableHead className="w-10" />
         </TableRow>
       </TableHeader>
@@ -48,8 +48,8 @@ export function TenantModulesTable({
                 {m.isActive ? "Active" : "Inactive"}
               </Badge>
             </TableCell>
-            <TableCell className="max-w-xs truncate font-mono text-xs text-muted-foreground">
-              {m.config ? JSON.stringify(m.config) : "—"}
+            <TableCell className="text-sm text-muted-foreground">
+              {m.minAnalystLevel}
             </TableCell>
             <TableCell>
               <TenantModuleRowActions tenantId={tenantId} module={m} />

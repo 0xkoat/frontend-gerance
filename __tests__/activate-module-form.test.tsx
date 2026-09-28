@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ActivateModuleForm } from "@/components/tenants/activate-module-form";
 import { mockJsonResponse } from "../test-utils";
@@ -23,7 +23,7 @@ beforeEach(() => {
 });
 
 describe("ActivateModuleForm", () => {
-  it("posts the picked module with no config when the JSON field is left blank", async () => {
+  it("posts only the picked module", async () => {
     const fetchMock = jest.fn().mockResolvedValue(
       mockJsonResponse(
         {
@@ -31,7 +31,7 @@ describe("ActivateModuleForm", () => {
           tenantId: "t1",
           moduleName: "SIEM",
           isActive: true,
-          config: null,
+          minAnalystLevel: "L2",
         },
         201,
       ),
@@ -47,23 +47,8 @@ describe("ActivateModuleForm", () => {
     expect(url).toBe("/api/tenants/t1/modules");
     expect(init?.method).toBe("POST");
     const body = JSON.parse(init?.body as string);
-    expect(body.moduleName).toBeTruthy();
-    expect(body.config).toBeUndefined();
+    expect(Object.keys(body)).toEqual(["moduleName"]);
     expect(refresh).toHaveBeenCalled();
-  });
-
-  it("shows a field error and never calls the backend for invalid config JSON", async () => {
-    const fetchMock = jest.fn();
-    global.fetch = fetchMock as unknown as typeof fetch;
-    const user = userEvent.setup();
-
-    render(<ActivateModuleForm tenantId="t1" alreadyActive={[]} />);
-    const textarea = screen.getByLabelText(/config \(json, optional\)/i);
-    fireEvent.change(textarea, { target: { value: "{not valid json" } });
-    await user.click(screen.getByRole("button", { name: /activate module/i }));
-
-    expect(await screen.findByText(/enter valid json/i)).toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("filters already-active modules out of the picker", () => {

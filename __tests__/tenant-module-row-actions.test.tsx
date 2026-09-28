@@ -1,4 +1,4 @@
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TenantModuleRowActions } from "@/components/tenants/tenant-module-row-actions";
 import { mockJsonResponse } from "../test-utils";
@@ -24,7 +24,7 @@ const tenantModule: TenantModule = {
   tenantId: "t1",
   moduleName: "VM" as never,
   isActive: true,
-  config: { apiKey: "secret" },
+  minAnalystLevel: "L1",
 };
 
 async function openMenu(user: ReturnType<typeof userEvent.setup>) {
@@ -39,7 +39,7 @@ beforeEach(() => {
 });
 
 describe("TenantModuleRowActions", () => {
-  it("edit dialog pre-fills isActive and the current config", async () => {
+  it("edit dialog pre-fills isActive and has no config editor", async () => {
     const user = userEvent.setup();
     render(<TenantModuleRowActions tenantId="t1" module={tenantModule} />);
 
@@ -48,12 +48,10 @@ describe("TenantModuleRowActions", () => {
 
     expect(await screen.findByText("Edit VM")).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: /active/i })).toBeChecked();
-    expect(screen.getByLabelText(/config \(json\)/i)).toHaveValue(
-      JSON.stringify({ apiKey: "secret" }, null, 2),
-    );
+    expect(screen.queryByLabelText(/config/i)).not.toBeInTheDocument();
   });
 
-  it("PATCHes isActive/config on save", async () => {
+  it("PATCHes only isActive on save", async () => {
     const fetchMock = jest.fn().mockResolvedValue(
       mockJsonResponse(
         {
@@ -61,7 +59,7 @@ describe("TenantModuleRowActions", () => {
           tenantId: "t1",
           moduleName: "VM",
           isActive: false,
-          config: null,
+          minAnalystLevel: "L1",
         },
         200,
       ),
@@ -80,26 +78,8 @@ describe("TenantModuleRowActions", () => {
     const [url, init] = fetchMock.mock.calls[0];
     expect(url).toBe("/api/tenants/t1/modules/VM");
     expect(init?.method).toBe("PATCH");
-    const body = JSON.parse(init?.body as string);
-    expect(body.isActive).toBe(false);
+    expect(JSON.parse(init?.body as string)).toEqual({ isActive: false });
     expect(refresh).toHaveBeenCalled();
-  });
-
-  it("shows a field error for invalid config JSON without calling the backend", async () => {
-    const fetchMock = jest.fn();
-    global.fetch = fetchMock as unknown as typeof fetch;
-    const user = userEvent.setup();
-
-    render(<TenantModuleRowActions tenantId="t1" module={tenantModule} />);
-    await openMenu(user);
-    await user.click(screen.getByRole("menuitem", { name: /^edit$/i }));
-
-    const textarea = screen.getByLabelText(/config \(json\)/i);
-    fireEvent.change(textarea, { target: { value: "{not valid" } });
-    await user.click(screen.getByRole("button", { name: /^save$/i }));
-
-    expect(await screen.findByText(/enter valid json/i)).toBeInTheDocument();
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("removes the module on confirm, and surfaces a backend error via toast otherwise", async () => {

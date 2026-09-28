@@ -309,7 +309,7 @@ describe("GET/POST /api/tenants/:id/modules", () => {
             tenantId: "t1",
             moduleName: "SIEM",
             isActive: true,
-            config: null,
+            minAnalystLevel: "L1",
           },
         ],
         200,
@@ -348,7 +348,7 @@ describe("GET/POST /api/tenants/:id/modules", () => {
           tenantId: "t1",
           moduleName: "VM",
           isActive: true,
-          config: { a: 1 },
+          minAnalystLevel: "L1",
         },
         201,
       ) as unknown as Response,
@@ -356,12 +356,33 @@ describe("GET/POST /api/tenants/:id/modules", () => {
     const { POST } = await import("@/app/api/tenants/[id]/modules/route");
 
     const res = await POST(
-      reqMethod("POST", { moduleName: "VM", config: { a: 1 } }),
+      reqMethod("POST", { moduleName: "VM" }),
       paramsOf("t1"),
     );
 
     expect(res.status).toBe(201);
     expect(await res.json()).toMatchObject({ moduleName: "VM" });
+  });
+
+  it("POST strips a leftover config field before forwarding", async () => {
+    setSession(superAdminToken);
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(
+        mockJsonResponse(
+          { id: "m2", moduleName: "VM" },
+          201,
+        ) as unknown as Response,
+      );
+    const { POST } = await import("@/app/api/tenants/[id]/modules/route");
+
+    await POST(
+      reqMethod("POST", { moduleName: "VM", config: { a: 1 } }),
+      paramsOf("t1"),
+    );
+
+    const [, init] = fetchSpy.mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toEqual({ moduleName: "VM" });
   });
 
   it("POST relays the backend's already-configured conflict", async () => {
@@ -403,7 +424,7 @@ describe("PATCH/DELETE /api/tenants/:id/modules/:moduleName", () => {
     expect(res.status).toBe(403);
   });
 
-  it("PATCH forwards isActive/config and returns the updated row", async () => {
+  it("PATCH forwards isActive and returns the updated row", async () => {
     setSession(superAdminToken);
     jest.spyOn(global, "fetch").mockResolvedValue(
       mockJsonResponse(
@@ -412,7 +433,7 @@ describe("PATCH/DELETE /api/tenants/:id/modules/:moduleName", () => {
           tenantId: "t1",
           moduleName: "VM",
           isActive: false,
-          config: null,
+          minAnalystLevel: "L1",
         },
         200,
       ) as unknown as Response,

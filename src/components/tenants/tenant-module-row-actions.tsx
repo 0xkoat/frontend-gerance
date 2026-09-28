@@ -5,12 +5,7 @@ import { useRouter } from "next/navigation";
 import { MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-  FieldError,
-} from "@/components/ui/field";
+import { FieldGroup } from "@/components/ui/field";
 import {
   Dialog,
   DialogContent,
@@ -36,14 +31,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { updateTenantModuleSchema } from "@/lib/validations/tenants";
-import { fieldErrorsFromZod } from "@/lib/zod-errors";
 import type { TenantModule } from "@/types/modules";
 
 type ActiveDialog = "edit" | "remove" | null;
 
-// Phase 11 (2026-08-07) — mirrors src/components/soar/playbook-row-actions.tsx's
-// edit-dialog/delete-confirm-dialog shape closely (isActive toggle + raw JSON textarea,
-// same reasoning as ActivateModuleForm for why config has no structured fields).
+// Super Admin row actions for a tenant's module subscription: toggle Active, or remove the
+// subscription entirely. The minimum analyst level is the tenant Admin's to set, not here.
 export function TenantModuleRowActions({
   tenantId,
   module: tenantModule,
@@ -56,34 +49,20 @@ export function TenantModuleRowActions({
   const [isActive, setIsActive] = useState(tenantModule.isActive);
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   function closeDialogs() {
     setActiveDialog(null);
     setFormError(null);
-    setFieldErrors({});
     setIsActive(tenantModule.isActive);
   }
 
   async function handleEditSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
-    setFieldErrors({});
 
-    const formData = new FormData(event.currentTarget);
-    const configText = String(formData.get("config") ?? "").trim();
-
-    let config: unknown;
-    try {
-      config = configText ? JSON.parse(configText) : undefined;
-    } catch {
-      setFieldErrors({ config: "Enter valid JSON" });
-      return;
-    }
-
-    const parsed = updateTenantModuleSchema.safeParse({ isActive, config });
+    const parsed = updateTenantModuleSchema.safeParse({ isActive });
     if (!parsed.success) {
-      setFieldErrors(fieldErrorsFromZod(parsed.error));
+      setFormError("Invalid value");
       return;
     }
 
@@ -181,25 +160,6 @@ export function TenantModuleRowActions({
                 />
                 Active
               </label>
-              <Field data-invalid={!!fieldErrors.config}>
-                <FieldLabel htmlFor={`config-${tenantModule.id}`}>
-                  Config (JSON)
-                </FieldLabel>
-                <textarea
-                  id={`config-${tenantModule.id}`}
-                  name="config"
-                  rows={4}
-                  defaultValue={
-                    tenantModule.config
-                      ? JSON.stringify(tenantModule.config, null, 2)
-                      : ""
-                  }
-                  placeholder={'{ "apiKey": "..." }'}
-                  disabled={pending}
-                  className="w-full rounded-lg border border-input bg-transparent px-3 py-2 font-mono text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                />
-                <FieldError>{fieldErrors.config}</FieldError>
-              </Field>
               {formError && (
                 <p role="alert" className="text-sm text-destructive">
                   {formError}
@@ -225,9 +185,9 @@ export function TenantModuleRowActions({
               Remove {tenantModule.moduleName}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              This deletes the module&apos;s configuration for this tenant
-              entirely — re-activating it later starts from a blank config, not
-              what&apos;s here now.
+              This removes the module from this tenant entirely, including the
+              minimum analyst level its Admin set. Re-activating it later starts
+              from the default level.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

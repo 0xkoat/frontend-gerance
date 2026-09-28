@@ -4,12 +4,7 @@ import { useState, type SubmitEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import {
-  Field,
-  FieldGroup,
-  FieldLabel,
-  FieldError,
-} from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import {
   Select,
   SelectContent,
@@ -18,13 +13,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { activateTenantModuleSchema } from "@/lib/validations/tenants";
-import { fieldErrorsFromZod } from "@/lib/zod-errors";
 import { ModuleName } from "@/types/modules";
 
-// `config` is a raw JSON textarea, not a structured form — ActivateTenantModuleDto accepts
-// an open, unconstrained object (each module's own config shape isn't defined anywhere in
-// this codebase yet, same "nothing to build a structured form against" reasoning as SOAR's
-// `actions` field). Phase 11 (2026-08-07).
+// Activates a module for this tenant. The backend assigns the module's default minimum
+// analyst level; the tenant's own Admin can change it afterwards.
 export function ActivateModuleForm({
   tenantId,
   alreadyActive,
@@ -45,7 +37,6 @@ export function ActivateModuleForm({
   );
   const [pending, setPending] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   if (available.length === 0) {
     return (
@@ -58,25 +49,10 @@ export function ActivateModuleForm({
   async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
     setFormError(null);
-    setFieldErrors({});
 
-    const formData = new FormData(event.currentTarget);
-    const configText = String(formData.get("config") ?? "").trim();
-
-    let config: unknown;
-    try {
-      config = configText ? JSON.parse(configText) : undefined;
-    } catch {
-      setFieldErrors({ config: "Enter valid JSON" });
-      return;
-    }
-
-    const parsed = activateTenantModuleSchema.safeParse({
-      moduleName,
-      config,
-    });
+    const parsed = activateTenantModuleSchema.safeParse({ moduleName });
     if (!parsed.success) {
-      setFieldErrors(fieldErrorsFromZod(parsed.error));
+      setFormError("Choose a module");
       return;
     }
 
@@ -95,7 +71,6 @@ export function ActivateModuleForm({
       }
 
       toast.success(`${parsed.data.moduleName} activated`);
-      (event.target as HTMLFormElement).reset();
       setModuleName(available.find((m) => m !== parsed.data.moduleName));
       router.refresh();
     } catch {
@@ -128,19 +103,6 @@ export function ActivateModuleForm({
               ))}
             </SelectContent>
           </Select>
-        </Field>
-
-        <Field data-invalid={!!fieldErrors.config}>
-          <FieldLabel htmlFor="config">Config (JSON, optional)</FieldLabel>
-          <textarea
-            id="config"
-            name="config"
-            rows={3}
-            placeholder={'{ "apiKey": "..." }'}
-            disabled={pending}
-            className="w-full rounded-lg border border-input bg-transparent px-3 py-2 font-mono text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-          />
-          <FieldError>{fieldErrors.config}</FieldError>
         </Field>
 
         {formError && (
