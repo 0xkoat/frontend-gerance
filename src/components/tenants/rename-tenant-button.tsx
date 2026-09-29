@@ -93,7 +93,12 @@ export function RenameTenantButton({
             configuration are unaffected.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} noValidate>
+        {/* Keyed on the values it was initialized from: when a refresh delivers new ones
+            while this dialog is still mounted (it's closing), React remounts the form
+            instead of changing an uncontrolled field's defaultValue in place — which Base
+            UI reports via console.error, and Next's dev overlay then opens its own dialog
+            on top of the page. */}
+        <form key={tenantName} onSubmit={handleSubmit} noValidate>
           <Field data-invalid={!!fieldErrors.name}>
             <FieldLabel htmlFor="name">Name</FieldLabel>
             <Input

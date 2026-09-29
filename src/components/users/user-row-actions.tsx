@@ -200,7 +200,16 @@ function EditUserDialog({ user, open, onOpenChange, onSuccess }: DialogProps) {
             Update this user&apos;s profile fields.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} noValidate>
+        {/* Keyed on the values it was initialized from: when a refresh delivers new ones
+            while this dialog is still mounted (it's closing), React remounts the form
+            instead of changing an uncontrolled field's defaultValue in place — which Base
+            UI reports via console.error, and Next's dev overlay then opens its own dialog
+            on top of the page. */}
+        <form
+          key={`${user.name}|${user.email}|${user.phoneNumber}`}
+          onSubmit={handleSubmit}
+          noValidate
+        >
           <FieldGroup>
             <Field data-invalid={!!fieldErrors.name}>
               <FieldLabel htmlFor={`name-${user.id}`}>Full name</FieldLabel>
