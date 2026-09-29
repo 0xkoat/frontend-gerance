@@ -46,7 +46,7 @@ export default async function UsersPage({
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[2fr_1fr]">
+      <div className="grid grid-cols-1 gap-4 min-[1700px]:grid-cols-[minmax(0,1fr)_20rem]">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -63,7 +63,9 @@ export default async function UsersPage({
                     variant="outline"
                     size="sm"
                     nativeButton={false}
-                    render={<Link href={`/users?page=${page - 1}`}>Previous</Link>}
+                    render={
+                      <Link href={`/users?page=${page - 1}`}>Previous</Link>
+                    }
                   />
                 )}
                 <span className="text-xs text-muted-foreground">

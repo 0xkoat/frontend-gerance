@@ -53,7 +53,7 @@ export function TicketsTable({
       <TableBody>
         {tickets.map((ticket) => (
           <TableRow key={ticket.id} className="align-top">
-            <TableCell className="max-w-md whitespace-normal">
+            <TableCell className="max-w-md min-w-48 whitespace-normal">
               <div className="font-medium">{ticket.title}</div>
               <p className="mt-1 line-clamp-3 text-xs whitespace-pre-line text-muted-foreground">
                 {ticket.description}
@@ -80,7 +80,10 @@ export function TicketsTable({
               </div>
             </TableCell>
             <TableCell className="text-sm text-muted-foreground">
-              {new Date(ticket.createdAt).toLocaleString()}
+              {new Date(ticket.createdAt).toLocaleString([], {
+                dateStyle: "short",
+                timeStyle: "short",
+              })}
             </TableCell>
             <TableCell>
               <TicketStatusMenu

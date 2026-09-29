@@ -68,7 +68,7 @@ export default async function TicketsPage({
       <div
         className={cn(
           "grid grid-cols-1 gap-4",
-          canCreate && "lg:grid-cols-[2fr_1fr]",
+          canCreate && "min-[1700px]:grid-cols-[minmax(0,1fr)_20rem]",
         )}
       >
         <Card>
