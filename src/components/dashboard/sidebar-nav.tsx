@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { UserRole } from "@/types/auth";
 import type { AvailableModule } from "@/types/modules";
 import { useLaunchModule } from "@/components/modules/use-launch-module";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 interface SidebarNavProps {
   role: UserRole;
@@ -45,6 +46,11 @@ export function SidebarNav({
   const [loggingOut, setLoggingOut] = useState(false);
   const { launch, launching } = useLaunchModule();
   const launchable = modules.filter((m) => m.canLaunch);
+  // Roles that raise or receive tickets get the notification bell.
+  const showBell =
+    role === UserRole.ADMIN ||
+    role === UserRole.ANALYST ||
+    role === UserRole.INTEGRATION_ADMIN;
 
   async function handleLogout() {
     setLoggingOut(true);
@@ -60,9 +66,13 @@ export function SidebarNav({
         <span className="text-sm font-semibold tracking-wide">
           SEC<span className="text-muted-foreground">OPS</span>
         </span>
+        {showBell && <NotificationBell />}
         <span
           aria-hidden
-          className="signal-dot ml-auto size-1.5 rounded-full bg-[#0ca30c]"
+          className={cn(
+            "signal-dot size-1.5 rounded-full bg-[#0ca30c]",
+            !showBell && "ml-auto",
+          )}
         />
         <span className="sr-only">All systems monitoring</span>
       </div>
