@@ -63,3 +63,7 @@ export const requireIntegrationAdmin = () =>
   requireRole(UserRole.INTEGRATION_ADMIN);
 export const requireIntegrationOrSuperAdmin = () =>
   requireRole(UserRole.INTEGRATION_ADMIN, UserRole.SUPER_ADMIN);
+// Tickets (v2 Phase 4): tenant members raise them; tenant members and the Integration
+// Admin read and handle them (the backend decides which tickets each one sees).
+export const requireTicketUser = () =>
+  requireRole(UserRole.ADMIN, UserRole.ANALYST, UserRole.INTEGRATION_ADMIN);

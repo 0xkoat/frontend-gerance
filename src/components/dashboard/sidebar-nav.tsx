@@ -8,6 +8,7 @@ import {
   Users,
   Building2,
   Cable,
+  LifeBuoy,
   SlidersHorizontal,
   ExternalLink,
   Network,
@@ -75,6 +76,14 @@ export function SidebarNav({
             <LayoutDashboard className="size-4" />
             Dashboard
           </NavLink>
+          {(role === UserRole.ADMIN ||
+            role === UserRole.ANALYST ||
+            role === UserRole.INTEGRATION_ADMIN) && (
+            <NavLink href="/tickets" active={pathname === "/tickets"}>
+              <LifeBuoy className="size-4" />
+              Tickets
+            </NavLink>
+          )}
           {/* hasPendingPasswordRequest drives the red dot for
               GET /users/me/pending-password-requests — a single designated
               recipient per tenant (the first-created Admin), or every Super
