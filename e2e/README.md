@@ -8,7 +8,8 @@ whole chain actually works together.
 
 ## Before running
 
-1. `docker compose up -d` in `backend/` (Postgres).
+1. `docker compose up -d postgres` at the repository root (Postgres). Compose reads the
+   root `.env`; see the backend README.
 2. `npm run start:dev` in `backend/` (NestJS on `:3000`).
 3. `npm run seed:demo` in `backend/`, at least once — this is where the
    tenant/user identities in `e2e/fixtures/accounts.ts` come from. The seed
@@ -27,7 +28,7 @@ npm run test:e2e:report   # open the HTML report from the last run
 ## Layout
 
 - `auth.setup.ts` — logs in once per role (Super Admin, Admin, Analyst,
-  Viewer) and saves the session to `.auth/*.json` (gitignored). Every other
+  Integration Admin) and saves the session to `.auth/*.json` (gitignored). Every other
   spec reuses one of these via `test.use({ storageState: ... })` instead of
   logging in through the UI — both faster and, per below, load-bearing.
 - `helpers.ts` — shared actions (`login`, `logout`, `clickAndWaitForDialogClose`,
@@ -37,12 +38,13 @@ npm run test:e2e:report   # open the HTML report from the last run
   make and hard to diagnose the first time.
 - `fixtures/accounts.ts` — the seeded credentials this suite logs in as.
 - `*.spec.ts` — one file per area (`auth`, `rbac`, `tenants`, `users`,
-  `security-modules`).
+  `modules`, `tickets`). `modules` covers the launch redirect and analyst
+  level gating; `tickets` drives two live browsers for the notification flow.
 
 ## The one thing to know before touching auth
 
 `AuthController` (login/refresh/logout/forgot-password) shares a single
-5-requests-per-60-seconds-per-IP throttle across all four routes, with no
+5-requests-per-60-seconds throttle per client address across all four routes, with no
 explicit `blockDuration` — tripping it blocks *every* auth call from this
 machine for a full 60 seconds, not just the one that went over. Every real
 call to that controller in this suite goes through `helpers.ts`'s
@@ -54,9 +56,11 @@ existing wrappers, or the suite will start intermittently 429ing again.
 
 ## Test data
 
-Every test that creates something (a tenant, a user, a CTI IOC, a SOAR
-playbook) deletes it again in a `finally` block, so a full run — pass or fail
-— leaves the seeded demo dataset exactly as `npm run seed:demo` produced it.
+Every test that creates a tenant or a user deletes it again in a `finally`
+block. The ticket spec is the exception: the platform has no way to delete a
+ticket, so each run leaves one `E2E SIEM ticket ...` (and its notifications) in
+the first demo tenant. A full reseed, or deleting that tenant, clears them.
+
 If a run is killed mid-test (Ctrl-C, a crashed browser) rather than failing
-normally, that cleanup won't have run; check for stray rows named
-`E2E Playwright *` under Tenants/Users before demoing.
+normally, the cleanup won't have run; check for stray rows named
+`E2E Playwright *` under Tenants and Users before demoing.
