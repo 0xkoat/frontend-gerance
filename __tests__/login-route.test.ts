@@ -9,6 +9,10 @@
 // Content-Type-guard branch, which returns before any cookie/backend call — see the
 // comment on POST in src/app/api/auth/login/route.ts for why that's the one safe-to-test
 // slice of this handler without mocking next/headers' cookies().
+// backendFetch reads the client address from next/headers' headers() (request-scoped).
+jest.mock("next/headers", () => ({
+  headers: jest.fn(async () => new Headers()),
+}));
 import { POST } from "@/app/api/auth/login/route";
 
 describe("POST /api/auth/login — Content-Type guard", () => {

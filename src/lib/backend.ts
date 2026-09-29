@@ -1,5 +1,5 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { getToken, setSessionCookie } from "@/lib/session";
 
 // Server-only: never fetch the backend directly from a Client Component. Route Handlers
@@ -23,11 +23,23 @@ export interface BackendErrorBody {
   error?: string;
 }
 
+// Every backend call comes from this server, so without this the backend would see one
+// address for all users and its per-IP rate limit on login/refresh/forgot-password would
+// be one bucket for the whole platform. Forwards only the last X-Forwarded-For hop: the one
+// Next itself (or a reverse proxy in front of it) recorded. The backend trusts it only
+// because it comes from a loopback/private address (its `trust proxy` setting).
+async function clientAddressHeader(): Promise<Record<string, string>> {
+  const forwardedFor = (await headers()).get("x-forwarded-for");
+  const clientAddress = forwardedFor?.split(",").at(-1)?.trim();
+  return clientAddress ? { "X-Forwarded-For": clientAddress } : {};
+}
+
 export async function backendFetch(path: string, init: RequestInit = {}) {
   return fetch(`${BACKEND_URL}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...(await clientAddressHeader()),
       ...init.headers,
     },
     cache: "no-store",

@@ -7,6 +7,10 @@
 // Unlike login, this handler never touches next/headers' cookies(), so it's fully testable
 // end to end (guard, validation, and the backend passthrough) without mocking anything but
 // fetch.
+// backendFetch reads the client address from next/headers' headers() (request-scoped).
+jest.mock("next/headers", () => ({
+  headers: jest.fn(async () => new Headers()),
+}));
 import { POST } from "@/app/api/auth/forgot-password/route";
 
 function request(body: unknown, headers: Record<string, string> = {}) {

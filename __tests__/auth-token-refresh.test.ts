@@ -10,8 +10,9 @@ import { SESSION_COOKIE } from "@/lib/session";
 
 jest.mock("next/headers", () => ({
   cookies: jest.fn(),
+  headers: jest.fn(async () => new Headers()),
 }));
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 
 const REFRESH_COOKIE = "refresh_token";
 
@@ -40,6 +41,35 @@ function refreshSetCookieHeader(value: string) {
 afterEach(() => {
   jest.restoreAllMocks();
   (cookies as jest.Mock).mockReset();
+});
+
+describe("backendFetch", () => {
+  it("forwards only the last X-Forwarded-For hop as the client address", async () => {
+    (headers as jest.Mock).mockResolvedValueOnce(
+      new Headers({ "x-forwarded-for": "198.51.100.9, 203.0.113.7" }),
+    );
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    const { backendFetch } = await import("@/lib/backend");
+    await backendFetch("/health");
+
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    expect(init.headers).toMatchObject({ "X-Forwarded-For": "203.0.113.7" });
+  });
+
+  it("sends no X-Forwarded-For when the request carried none", async () => {
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(new Response(null, { status: 200 }));
+
+    const { backendFetch } = await import("@/lib/backend");
+    await backendFetch("/health");
+
+    const init = fetchSpy.mock.calls[0][1] as RequestInit;
+    expect(init.headers).not.toHaveProperty("X-Forwarded-For");
+  });
 });
 
 describe("refreshAccessToken", () => {

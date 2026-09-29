@@ -11,6 +11,7 @@ import { fakeToken, setSessionCookie } from "../test-utils";
 
 jest.mock("next/headers", () => ({
   cookies: jest.fn(),
+  headers: jest.fn(async () => new Headers()),
 }));
 import { cookies } from "next/headers";
 
