@@ -6,6 +6,7 @@ import { UserRole } from "@/types/auth";
 import type { TenantSummary } from "@/components/tenants/tenants-table";
 import { ModuleTiles } from "@/components/modules/module-tiles";
 import type { AvailableModule } from "@/types/modules";
+import type { Ticket } from "@/types/tickets";
 
 export default async function DashboardPage() {
   const session = await requireSession();
@@ -99,18 +100,52 @@ async function TenantOverview({ role }: { role: UserRole }) {
   );
 }
 
-// The module ticket inbox joins this in Phase 4 — the other half of this role.
-function IntegrationAdminOverview() {
+// The Integration Admin's two jobs: keep module endpoints right, and handle Modules
+// tickets from every tenant.
+async function IntegrationAdminOverview() {
+  const res = await backendFetchAuthedNoRefresh("/tickets");
+  const tickets: Ticket[] = res.ok ? await res.json() : [];
+  const open = tickets.filter((t) => t.status === "OPEN").length;
+  const inProgress = tickets.filter((t) => t.status === "IN_PROGRESS").length;
+
   return (
-    <div className="flex flex-col gap-2">
-      <h1 className="text-xl font-semibold tracking-tight">Overview</h1>
-      <p className="text-sm text-muted-foreground">
-        Set where each module lives and check it&apos;s reachable on the{" "}
-        <Link href="/module-endpoints" className="underline underline-offset-4">
-          module endpoints
-        </Link>{" "}
-        page. Module tickets will appear here.
-      </p>
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-xl font-semibold tracking-tight">Overview</h1>
+        <p className="text-sm text-muted-foreground">
+          Set where each module lives and check it&apos;s reachable on the{" "}
+          <Link
+            href="/module-endpoints"
+            className="underline underline-offset-4"
+          >
+            module endpoints
+          </Link>{" "}
+          page.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Open module tickets
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-3xl font-semibold">{open}</CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              In progress
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-3xl font-semibold">
+            {inProgress}
+          </CardContent>
+        </Card>
+      </div>
+      <Link href="/tickets" className="text-sm underline underline-offset-4">
+        Go to tickets
+      </Link>
     </div>
   );
 }
