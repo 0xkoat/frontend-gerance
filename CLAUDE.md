@@ -64,10 +64,34 @@ redesign" section for the full phase plan (roles, module launch, ticketing).
   in import statements at compile time, not inside `jest.mock()` strings. Use a relative
   path in `jest.mock` (see `__tests__/module-tiles.test.tsx`).
 - Verified: 26 suites / 167 Jest tests, `next build`, `e2e/modules.spec.ts` 7/7 (real
-  redirect to the configured IP:PORT, level gating both ways). Full Playwright run: 13/15
-  then the two failures passed on rerun — `tenants.spec` rename-dialog close is a known
-  intermittent flake (also seen before Phase 3; the PATCH itself returns in <100 ms, the
-  trace shows the dialog element lingering), worth a dedicated look.
+  redirect to the configured IP:PORT, level gating both ways). The intermittent
+  `tenants.spec`/`users.spec` dialog failures noted here were root-caused and fixed in
+  Phase 4 (`d6ade1a`, see below).
+
+**Phase 4 done 2026-09-29** (commits `509d55b`, `d775af0`, `d275e36`, `d6ade1a`, `e5a212e`):
+- `(dashboard)/tickets`: create form (title, category Modules / Account & Access / Other,
+  module picker for Modules, description) for Admins/Analysts, status-filtered list for
+  Admins/Analysts/Integration Admins. The Update menu only offers moves the backend accepts
+  (`lib/tickets.ts`'s `allowedStatusChanges` mirrors the backend rules).
+- `NotificationBell` in the sidebar header (Admin, Analyst, Integration Admin): stored
+  notifications on mount, live `notification.created` frames over `/api/events/stream`
+  (toast + list + `router.refresh()`), open = mark read + go to Tickets, Mark all as read.
+  Integration Admin dashboard shows open / in-progress module ticket counts.
+- **Bug found and fixed (`d6ade1a`)**: the long-standing "dialog never closes" e2e flake.
+  After a save, `router.refresh()` changed the `defaultValue` of an uncontrolled field in a
+  still-mounted (closing) dialog; Base UI reports that with `console.error` (dev only), and
+  Next's dev overlay then opens its own `role=dialog` inside a shadow root, which
+  Playwright's selectors pierce. Proven from the trace (PATCH 200 in ~1s, dialog present 7s
+  later) and the dev-log warning. Fix: edit forms are keyed on the values they were
+  initialized from (tenant rename, user edit profile, module endpoint). Don't reintroduce a
+  prop-driven `defaultValue` in a dialog that stays mounted across a refresh.
+- Test gotchas: jsdom has no `EventSource` (see `__tests__/notification-bell.test.tsx`'s
+  mock); `proxyToBackend` can't relay a 204 (it builds a JSON response), which is why the
+  backend's mark-read routes return 200 `{ unreadCount }`.
+- Verified: 29 suites / 186 Jest tests, `next build`, Playwright 16/16 in a full run plus
+  tenants/users specs passing twice more in a row; `e2e/tickets.spec.ts` drives two live
+  browsers (Analyst raises, Integration Admin's bell updates without reload, status change
+  notifies the Analyst, the creator can only withdraw).
 
 Everything below describing module pages, the asset feed, live events, severity styling or
 the "Backend to frontend adaptation plan" is **historical** — built, then removed in v2.
