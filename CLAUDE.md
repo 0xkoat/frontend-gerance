@@ -93,12 +93,28 @@ redesign" section for the full phase plan (roles, module launch, ticketing).
   browsers (Analyst raises, Integration Admin's bell updates without reload, status change
   notifies the Analyst, the creator can only withdraw).
 
+**Security audit fixes, 2026-09-29** (see backend/CLAUDE.md for the full findings list):
+- **F2 (`cca5e09`)**: `next` 16.2.12 -> 16.3.6 (critical unauthenticated RCE advisory in
+  the Image Optimization API) with `eslint-config-next` and `npm audit fix`;
+  `npm audit --omit=dev` reports 0. `next dev` regenerates the `AGENTS.md` rules block
+  (committed as `837ecef`). The Stack section below still says 16.2.12: it is stale.
+- **F1 (`cfdbda6`)**: `backendFetch` forwards the last `X-Forwarded-For` hop (the address
+  Next itself recorded) so the backend's per-IP auth throttle is per real client. Every
+  `next/headers` mock in `__tests__` now needs a `headers` function.
+- **F5 (`78d67b3`, regression fix `b6e0cfc`)**: `proxyToBackend` runs every route param
+  through `encodeURIComponent` and rejects `.` / `..`; `..%2F..%2Fusers%2Fme` used to reach
+  another backend route, now stops at the backend's UUID pipe with 400. Gotcha: for routes
+  with no dynamic segment Next passes a context whose `params` resolve to `undefined`, so
+  the code must default to `{}`; the first version crashed every such route with a 500
+  (only Playwright caught it, unit tests passed no context).
+- Verified: 30 suites / 192 Jest tests, `next build`, Playwright 16/16.
+
 Everything below describing module pages, the asset feed, live events, severity styling or
 the "Backend to frontend adaptation plan" is **historical** — built, then removed in v2.
 
 # Stack (as actually installed, 2026-08-19 — re-verify against package.json before trusting)
 
-- Next.js 16.2.12, App Router, `src/` directory, Turbopack — bumped from 16.2.10 on 2026-08-19
+- Next.js 16.3.6 (was 16.2.12 until the 2026-09-29 security fix), App Router, `src/` directory, Turbopack — bumped from 16.2.10 on 2026-08-19
   to close nine of the framework's own direct CVEs (see "Known gaps" below).
 - React 19.2.4, TypeScript 6.0.3 — matches the architecture spec PDF and the backend
   (`backend/package.json` was already pinned to `^6.0.3`; only the frontend, via
