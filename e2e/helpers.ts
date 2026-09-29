@@ -164,24 +164,6 @@ export async function openRowMenu(page: Page, rowText: string) {
   await row.locator("button").last().click();
 }
 
-/**
- * Select an option from one of this app's Base UI `<Select>` triggers
- * (role=combobox). Clicking the listbox option directly is flaky under
- * Base UI's portal-rendered popup in this app (observed during manual
- * testing) — keyboard navigation is the reliable path instead.
- */
-export async function selectByKeyboard(
-  page: Page,
-  trigger: ReturnType<Page["locator"]>,
-  downPresses: number,
-) {
-  await trigger.click();
-  for (let i = 0; i < downPresses; i++) {
-    await page.keyboard.press("ArrowDown");
-  }
-  await page.keyboard.press("Enter");
-}
-
 /** A short, unique-enough suffix so parallel/repeated test runs don't collide on unique fields (emails, tenant names). */
 export function uniqueSuffix() {
   return `${Date.now()}-${Math.floor(Math.random() * 10_000)}`;

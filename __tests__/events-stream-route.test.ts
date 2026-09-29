@@ -18,9 +18,10 @@ function setSession(token: string | null) {
   return setSessionCookie(cookies as jest.Mock, token);
 }
 
-const viewerToken = fakeToken({
-  sub: "viewer-1",
-  role: "VIEWER",
+const analystToken = fakeToken({
+  sub: "analyst-1",
+  role: "ANALYST",
+  analystLevel: "L1",
   tenantId: "t1",
   mustChangePassword: false,
 });
@@ -42,7 +43,7 @@ describe("GET /api/events/stream", () => {
   });
 
   it("proxies a backend error as a text/event-stream error frame with the same status", async () => {
-    setSession(viewerToken);
+    setSession(analystToken);
     jest.spyOn(global, "fetch").mockResolvedValue({
       ok: false,
       status: 403,
@@ -58,7 +59,7 @@ describe("GET /api/events/stream", () => {
   });
 
   it("forwards a successful backend stream's real body and sets the right headers", async () => {
-    setSession(viewerToken);
+    setSession(analystToken);
     const upstream = new ReadableStream({
       start(controller) {
         controller.enqueue(new TextEncoder().encode("data: hello\n\n"));
@@ -82,7 +83,7 @@ describe("GET /api/events/stream", () => {
     const [url, init] = fetchSpy.mock.calls[0];
     expect(String(url)).toContain("/events/stream");
     expect((init?.headers as Record<string, string>)?.Authorization).toBe(
-      `Bearer ${viewerToken}`,
+      `Bearer ${analystToken}`,
     );
   });
 });

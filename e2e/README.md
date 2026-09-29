@@ -31,7 +31,7 @@ npm run test:e2e:report   # open the HTML report from the last run
   spec reuses one of these via `test.use({ storageState: ... })` instead of
   logging in through the UI — both faster and, per below, load-bearing.
 - `helpers.ts` — shared actions (`login`, `logout`, `clickAndWaitForDialogClose`,
-  `openRowMenu`, `selectByKeyboard`, `loginInIsolatedContext`, …), each with a
+  `openRowMenu`, `loginInIsolatedContext`, …), each with a
   doc comment explaining a real bug it exists to avoid. Worth reading before
   writing a new spec — several of these encode a mistake that was easy to
   make and hard to diagnose the first time.

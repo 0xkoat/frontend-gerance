@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { EndpointRowActions } from "@/components/module-endpoints/endpoint-row-actions";
 import type { ModuleEndpoint } from "@/types/modules";
 
-export function moduleUrl(endpoint: ModuleEndpoint): string | null {
+function moduleUrl(endpoint: ModuleEndpoint): string | null {
   if (!endpoint.host || !endpoint.port) return null;
   const host = endpoint.host.includes(":")
     ? `[${endpoint.host}]`
