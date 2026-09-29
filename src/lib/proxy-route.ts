@@ -107,7 +107,7 @@ export function proxyToBackend<Body = undefined>(
     const { error } = await guard();
     if (error) return error;
 
-    const params = encodeParams(context ? await context.params : {});
+    const params = encodeParams((context && (await context.params)) ?? {});
     if (!params) {
       return NextResponse.json({ message: "Invalid path" }, { status: 400 });
     }

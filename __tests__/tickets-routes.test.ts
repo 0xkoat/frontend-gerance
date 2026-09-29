@@ -105,6 +105,22 @@ describe("/api/tickets", () => {
   });
 });
 
+describe("routes without a dynamic segment", () => {
+  it("still work when Next passes a context whose params resolve to undefined", async () => {
+    setSession(tokens.analyst);
+    jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(mockJsonResponse([], 200) as unknown as Response);
+    const { GET } = await import("@/app/api/tickets/route");
+
+    const res = await GET(reqMethod("GET"), {
+      params: Promise.resolve(undefined as never),
+    });
+
+    expect(res.status).toBe(200);
+  });
+});
+
 describe("route params", () => {
   function paramsOf(id: string) {
     return { params: Promise.resolve({ id }) };
