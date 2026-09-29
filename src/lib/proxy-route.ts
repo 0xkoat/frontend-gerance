@@ -74,6 +74,19 @@ interface ProxyToBackendOptions<Body> {
   fallbackErrorMessage?: string;
 }
 
+// Route params arrive already URL-decoded, so a param like `..%2Fusers` would reach the
+// backend path as `../users` and escape the route it was meant for. Each value is
+// re-encoded before it goes into the path; `.` and `..` survive encoding and are still dot
+// segments to the URL parser (as are `%2E` / `%2E%2E`), so those are rejected outright.
+function encodeParams(params: RouteParams): RouteParams | null {
+  const encoded: RouteParams = {};
+  for (const [key, value] of Object.entries(params)) {
+    if (value === "." || value === "..") return null;
+    encoded[key] = encodeURIComponent(value);
+  }
+  return encoded;
+}
+
 // Shared factory behind the Route Handlers under src/app/api/**, per decision 6 in
 // CLAUDE.md's adaptation plan: one small helper parameterized by path/method/schema/guard,
 // instead of hand-written near-duplicates each repeating the same zod-validate → guard →
@@ -94,7 +107,10 @@ export function proxyToBackend<Body = undefined>(
     const { error } = await guard();
     if (error) return error;
 
-    const params = context ? await context.params : {};
+    const params = encodeParams(context ? await context.params : {});
+    if (!params) {
+      return NextResponse.json({ message: "Invalid path" }, { status: 400 });
+    }
     const backendPath =
       typeof options.path === "function" ? options.path(params) : options.path;
 

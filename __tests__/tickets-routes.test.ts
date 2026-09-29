@@ -105,6 +105,43 @@ describe("/api/tickets", () => {
   });
 });
 
+describe("route params", () => {
+  function paramsOf(id: string) {
+    return { params: Promise.resolve({ id }) };
+  }
+
+  it("re-encodes a decoded param so it can't climb to another backend route", async () => {
+    setSession(tokens.analyst);
+    const fetchSpy = jest
+      .spyOn(global, "fetch")
+      .mockResolvedValue(mockJsonResponse({}, 400) as unknown as Response);
+    const { PATCH } = await import("@/app/api/tickets/[id]/status/route");
+
+    await PATCH(
+      reqMethod("PATCH", { status: "RESOLVED" }),
+      paramsOf("../../users/me"),
+    );
+
+    expect(String(fetchSpy.mock.calls[0][0])).toMatch(
+      /\/tickets\/\.\.%2F\.\.%2Fusers%2Fme\/status$/,
+    );
+  });
+
+  it.each([".", ".."])("rejects the dot segment %p without calling the backend", async (id) => {
+    setSession(tokens.analyst);
+    const fetchSpy = jest.spyOn(global, "fetch");
+    const { PATCH } = await import("@/app/api/tickets/[id]/status/route");
+
+    const res = await PATCH(
+      reqMethod("PATCH", { status: "RESOLVED" }),
+      paramsOf(id),
+    );
+
+    expect(res.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});
+
 describe("/api/notifications", () => {
   it("relays the caller's notifications and mark-read results", async () => {
     setSession(tokens.integrationAdmin);
