@@ -109,6 +109,27 @@ redesign" section for the full phase plan (roles, module launch, ticketing).
   (only Playwright caught it, unit tests passed no context).
 - Verified: 30 suites / 192 Jest tests, `next build`, Playwright 16/16.
 
+**Phase 5 done 2026-09-29** (commits `8a28e57`, `327fb25`, `9e1cb1b`, `690d51c`): documentation
+and deployment.
+- **Layout bug found by the screenshots, fixed (`8a28e57`)**: the tickets and users pages put
+  the create form beside the table from `lg` (1024 px), which left the table too narrow: the
+  ticket title collapsed to a few characters per line and the Update button was clipped. The
+  form now sits below the table until `min-[1700px]`, the table column is `minmax(0,1fr)` with
+  a fixed 20rem form, the title cell has `min-w-48`, and the date is `short`. Checked at 1366
+  and 1600 px; tickets, users and rbac Playwright specs pass.
+- 13 screenshots (one per role and screen) live in `docs/screenshots/`. `/docs` is gitignored
+  in this repo, so they are force-added like the existing docs (`git add -f`). The README
+  (rewritten for v2) embeds them. `e2e/README.md` was corrected (compose is at the repo root,
+  the Viewer login became Integration Admin, the spec list matches the files, and the ticket
+  spec leaves one ticket per run because tickets cannot be deleted).
+- `deploy.yml` runs on the self-hosted runner (`runs-on: [self-hosted, secops-vm]`), see
+  `../CICD_SETUP.md` and `../VM_SETUP.md`.
+- Gotcha: the VM's VirtualBox port forward holds port 3001 on the Windows host, which WSL sees
+  as in use, so `npm run dev` fails with EADDRINUSE and whatever answers on 3001 is the VM's
+  app. Use `npx next dev -p 3002` (Playwright takes `E2E_BASE_URL=http://localhost:3002`).
+- Screenshots were captured with per-role cookies and a per-role `X-Forwarded-For`, so the
+  5-per-minute login limit did not interfere.
+
 Everything below describing module pages, the asset feed, live events, severity styling or
 the "Backend to frontend adaptation plan" is **historical** — built, then removed in v2.
 
